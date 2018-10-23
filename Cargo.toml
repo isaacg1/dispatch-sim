@@ -1,0 +1,6 @@
+[package]
+name = "dispatch-sim"
+version = "0.1.0"
+authors = ["Isaac Grosof <igrosof@cmu.edu>"]
+
+[dependencies]
