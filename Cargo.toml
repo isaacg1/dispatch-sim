@@ -1,6 +1,7 @@
 [package]
-name = "dispatch-sim"
+name = "tail-simulator"
 version = "0.1.0"
 authors = ["Isaac Grosof <igrosof@cmu.edu>"]
 
 [dependencies]
+rand = "0.5.5"
