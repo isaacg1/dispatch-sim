@@ -204,10 +204,7 @@ impl Dispatch for Cost {
             .map(|j| {
                 (
                     j.0,
-                    j.1
-                        .iter()
-                        .map(|j| j.rem_size.min(job_size))
-                        .sum::<f64>()
+                    j.1.iter().map(|j| j.rem_size.min(job_size)).sum::<f64>()
                         + thread_rng().gen_range(0.0, job_size * 0.0001),
                 )
             })
@@ -219,6 +216,54 @@ impl Dispatch for Cost {
 impl fmt::Display for Cost {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Cost")
+    }
+}
+struct Cost2 {
+    size: Size,
+    lambda: f64,
+}
+
+impl Cost2 {
+    fn new(size_dist: &Size, lambda: f64) -> Self {
+        Self {
+            size: size_dist.clone(),
+            lambda: lambda,
+        }
+    }
+}
+
+impl Dispatch for Cost2 {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        queues
+            .iter()
+            .enumerate()
+            .map(|j| {
+                (
+                    j.0,
+                    j.1
+                        .iter()
+                        .map(|j| {
+                            let small_size = j.rem_size.min(job_size);
+                            let large_size = j.rem_size.max(job_size);
+                            let normal_rho = self.size.mean_given_below(job_size) * self.lambda;
+                            let large_rho = self.size.mean_given_below(large_size) * self.lambda;
+                            let lambda_above_large =
+                                (1.0 - self.size.fraction_below(large_size)) * self.lambda;
+                            (small_size / (1.0 - normal_rho))
+                                * (1.0 + lambda_above_large * large_size / (1.0 - large_rho))
+                        })
+                        .sum::<f64>()
+                        + thread_rng().gen_range(0.0, job_size * 0.0001),
+                )
+            })
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap()
+            .0
+    }
+}
+impl fmt::Display for Cost2 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Cost2")
     }
 }
 struct LWL_2me {}
@@ -396,6 +441,45 @@ impl Size {
             &Size::Hyper(low, high, low_prob) => low * low_prob + high * (1.0 - low_prob),
         }
     }
+    fn variance(&self) -> f64 {
+        match self {
+            &Size::Exp(lambda) => 1.0 / lambda.powf(2.0),
+            &Size::Pareto(alpha) => (1.0 / (alpha - 1.0)).powf(2.0) * alpha / (alpha - 2.0),
+            &Size::Hyper(low, high, low_prob) => {
+                2.0 * low * low * low_prob + 2.0 * high * high * (1.0 - low_prob)
+                    - self.mean().powf(2.0)
+            }
+        }
+    }
+    fn fraction_below(&self, x: f64) -> f64 {
+        match self {
+            &Size::Exp(lambda) => 1.0 - f64::exp(-lambda * x),
+            &Size::Pareto(alpha) => 1.0 - x.powf(-alpha),
+            &Size::Hyper(low, high, low_prob) => {
+                (1.0 - f64::exp((-1.0 / low) * x)) * low_prob
+                    + (1.0 - f64::exp((-1.0 / high) * x)) * (1.0 - low_prob)
+            }
+        }
+    }
+    fn mean_given_below(&self, x: f64) -> f64 {
+        match self {
+            &Size::Exp(lambda) => (1.0 - f64::exp(-lambda * x) * (1.0 + x * lambda)) / lambda,
+            &Size::Pareto(alpha) => (alpha / (alpha - 1.0)) * (1.0 - x.powf(1.0 - alpha)),
+            &Size::Hyper(low, high, low_prob) => {
+                Size::Exp(1.0 / low).mean_given_below(x) * low_prob
+                    + Size::Exp(1.0 / high).mean_given_below(x) * (1.0 - low_prob)
+            }
+        }
+    }
+    fn mean_sq_below(&self, x: f64) -> f64 {
+        match self {
+            &Size::Exp(lambda) => {
+                (2.0 + f64::exp(-x * lambda) * (-2.0 - x * lambda * (2.0 + x * lambda)))
+                    / ((1.0 - f64::exp(-x * lambda)) * lambda * lambda)
+            }
+            _ => unimplemented!(),
+        }
+    }
 }
 
 fn print_sim_mean(
@@ -416,19 +500,31 @@ fn print_sim_mean(
 }
 fn main() {
     let seed = 0;
-    let size = Size::balanced_hyper(1000.);
-    println!("Mean: {}", size.mean());
-    let rho = 0.9;
+    let size = Size::balanced_hyper(1000.0);
+    println!(
+        "Mean: {}, C^2: {}",
+        size.mean(),
+        size.variance() / size.mean().powf(2.0)
+    );
+    let rho = 0.5;
     let time = 1e6;
     let k = 10;
 
-    print_sim_mean(time, rho, &size, &mut Random::new(seed), 1, seed);
+    print_sim_mean(
+        time,
+        rho,
+        &size,
+        &mut Cost2::new(&size, rho / size.mean()),
+        k,
+        seed,
+    );
+    print_sim_mean(time, rho, &size, &mut Cost::new(), k, seed);
     print_sim_mean(time, rho, &size, &mut JSQ::new(), k, seed);
+    print_sim_mean(time, rho, &size, &mut Random::new(seed), 1, seed);
     print_sim_mean(time, rho, &size, &mut JIQ::new(seed), k, seed);
     print_sim_mean(time, rho, &size, &mut LWL::new(), k, seed);
     print_sim_mean(time, rho, &size, &mut LWL_me::new(), k, seed);
     print_sim_mean(time, rho, &size, &mut LWL_2me::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut Cost::new(), k, seed);
     print_sim_mean(time, rho, &size, &mut IMD::new(2.0), k, seed);
     print_sim_mean(time, rho, &size, &mut IMD::new(1.5), k, seed);
     print_sim_mean(time, rho, &size, &mut IMD::new(1.2), k, seed);
