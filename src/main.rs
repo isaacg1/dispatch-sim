@@ -4,6 +4,9 @@ use rand::distributions::{Distribution, Exp};
 use rand::prng::isaac::IsaacRng;
 use rand::thread_rng;
 
+extern crate quadrature;
+use quadrature::integrate;
+
 use std::fmt;
 
 use std::f64::INFINITY;
@@ -48,6 +51,12 @@ impl Completion {
 
 trait Dispatch: fmt::Display {
     fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize;
+}
+
+impl<S: Dispatch + ?Sized> Dispatch for Box<S> {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        (**self).dispatch(job_size, queues)
+    }
 }
 
 #[derive(Debug)]
@@ -266,6 +275,56 @@ impl fmt::Display for Cost2 {
         write!(f, "Cost2")
     }
 }
+struct Cost3 {
+    size: Size,
+    lambda: f64,
+}
+
+impl Cost3 {
+    fn new(size_dist: &Size, lambda: f64) -> Self {
+        Self {
+            size: size_dist.clone(),
+            lambda: lambda,
+        }
+    }
+}
+
+impl Dispatch for Cost3 {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        queues
+            .iter()
+            .enumerate()
+            .map(|j| {
+                (
+                    j.0,
+                    j.1
+                        .iter()
+                        .map(|j| {
+                            let small_size = j.rem_size.min(job_size);
+                            let large_size = j.rem_size.max(job_size);
+                            let normal_rho = self.size.mean_given_below(job_size) * self.lambda;
+                            //let large_rho = self.size.mean_given_below(large_size) * self.lambda;
+                            let large_desceding_bp =
+                                self.size.descending_busy_period(large_size, self.lambda);
+                            let lambda_above_large =
+                                (1.0 - self.size.fraction_below(large_size)) * self.lambda;
+                            (small_size / (1.0 - normal_rho))
+                                * (1.0 + lambda_above_large * large_size * large_desceding_bp)
+                        })
+                        .sum::<f64>()
+                        + thread_rng().gen_range(0.0, job_size * 0.0001),
+                )
+            })
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap()
+            .0
+    }
+}
+impl fmt::Display for Cost3 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Cost3")
+    }
+}
 struct LWL_2me {}
 
 impl LWL_2me {
@@ -342,6 +401,82 @@ impl fmt::Display for IMD {
         write!(f, "IMD({})", self.c)
     }
 }
+struct IMDbelow {
+    sent: HashMap<i64, Vec<f64>>,
+    c: f64,
+    rng: IsaacRng,
+}
+
+impl IMDbelow {
+    fn new(c: f64) -> Self {
+        Self {
+            c: c,
+            sent: HashMap::new(),
+            rng: IsaacRng::new_from_u64(0),
+        }
+    }
+}
+
+impl Dispatch for IMDbelow {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        let p = (job_size.log(self.c)).floor() as i64;
+        if !self.sent.contains_key(&p) {
+            let rng = &mut self.rng;
+            let table = (0..queues.len())
+                .map(|_| rng.gen_range(0.0, job_size * 0.001))
+                .collect();
+            self.sent.insert(p, table);
+        }
+        let mut sums_below = vec![0.0; queues.len()];
+        for (&k, v) in &self.sent {
+            if k <= p {
+                for (i, amount_sent) in v.iter().enumerate() {
+                    sums_below[i] += amount_sent;
+                }
+            }
+        }
+        let smallest = sums_below
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap()
+            .0;
+        self.sent.get_mut(&p).unwrap()[smallest] += job_size;
+        smallest
+    }
+}
+
+impl fmt::Display for IMDbelow {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "IMDbelow({})", self.c)
+    }
+}
+// Load balanced SITA
+struct SITA {
+    size: Size,
+}
+
+impl SITA {
+    fn new(size: &Size) -> Self {
+        Self {
+            size: size.clone(),
+        }
+    }
+}
+
+impl Dispatch for SITA {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        let mean_below = self.size.mean_given_below(job_size);
+        let load_below = mean_below / self.size.mean();
+        (load_below * queues.len() as f64).floor() as usize
+    }
+}
+
+impl fmt::Display for SITA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SITA")
+    }
+}
 
 fn simulate(
     end_time: f64,
@@ -358,14 +493,17 @@ fn simulate(
     let arrival_generator = Exp::new(lambda);
     let mut rng = IsaacRng::new_from_u64(seed);
     let mut arrival_increment = arrival_generator.sample(&mut rng);
+
     while current_time < end_time
         || queues
             .iter()
             .any(|q| q.iter().any(|j| j.arrival_time < end_time))
     {
+        /*
         queues
             .iter_mut()
             .for_each(|q| q.sort_by(|a, b| a.rem_size.partial_cmp(&b.rem_size).unwrap()));
+            */
         let job_increment = queues.iter().fold(INFINITY, |a, q| {
             if let Some(job) = q.get(0) {
                 a.min(job.rem_size)
@@ -431,7 +569,7 @@ impl Distribution<f64> for Size {
 
 impl Size {
     fn balanced_hyper(covariance: f64) -> Self {
-        let high = 2.0 * covariance + 1.0;
+        let high = 2.0 * covariance;
         Size::Hyper(1.0, high, high / (high + 1.0))
     }
     fn mean(&self) -> f64 {
@@ -443,11 +581,11 @@ impl Size {
     }
     fn variance(&self) -> f64 {
         match self {
-            &Size::Exp(lambda) => 1.0 / lambda.powf(2.0),
-            &Size::Pareto(alpha) => (1.0 / (alpha - 1.0)).powf(2.0) * alpha / (alpha - 2.0),
+            &Size::Exp(lambda) => 1.0 / lambda.powi(2),
+            &Size::Pareto(alpha) => (1.0 / (alpha - 1.0)).powi(2) * alpha / (alpha - 2.0),
             &Size::Hyper(low, high, low_prob) => {
                 2.0 * low * low * low_prob + 2.0 * high * high * (1.0 - low_prob)
-                    - self.mean().powf(2.0)
+                    - self.mean().powi(2)
             }
         }
     }
@@ -470,6 +608,11 @@ impl Size {
                     + Size::Exp(1.0 / high).mean_given_below(x) * (1.0 - low_prob)
             }
         }
+    }
+    fn descending_busy_period(&self, x: f64, l: f64) -> f64 {
+        let integrand = &|t: f64|1.0/(1.0-l*self.mean_given_below(t));
+        integrate(integrand, 0.0, x, 1e-6).integral
+        //integrand(x)
     }
     fn mean_sq_below(&self, x: f64) -> f64 {
         match self {
@@ -500,16 +643,51 @@ fn print_sim_mean(
 }
 fn main() {
     let seed = 0;
-    let size = Size::balanced_hyper(1000.0);
+    let size = Size::balanced_hyper(200.0);
+    //let size = Size::Exp(1.0);
+    //let size = Size::Pareto(2.01);
     println!(
         "Mean: {}, C^2: {}",
         size.mean(),
         size.variance() / size.mean().powf(2.0)
     );
-    let rho = 0.5;
+    let rho = 0.9;
     let time = 1e6;
     let k = 10;
 
+    let mut policies: Vec<Box<Dispatch>> = vec![Box::new(SITA::new(&size)), Box::new(LWL::new()), Box::new(Random::new(seed)), Box::new(JSQ::new()), Box::new(Cost::new())];
+    println!(",{}", policies.iter().map(|p|format!("{}", p)).collect::<Vec<String>>().join(","));
+    for rho in vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99] {
+        let mut results = vec![rho];
+        for policy in &mut policies {
+        let lambda = rho / size.mean();
+        let completions = simulate(time, lambda, &size, policy, k, seed);
+        let mean = completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
+        results.push(mean);
+        }
+        println!("{}", results.iter().map(|p|format!("{}", p)).collect::<Vec<String>>().join(","));
+    }
+    /*
+    print_sim_mean(time, rho, &size, &mut SITA::new(&size), k, seed);
+    print_sim_mean(time, rho, &size, &mut LWL::new(), k, seed);
+    print_sim_mean(time, rho, &size, &mut Random::new(seed), k, seed);
+    print_sim_mean(time, rho, &size, &mut JSQ::new(), k, seed);
+    print_sim_mean(time, rho, &size, &mut Cost::new(), k, seed);
+    */
+    /*
+    print_sim_mean(time, rho, &size, &mut Random::new(seed), 1, seed);
+    print_sim_mean(time, rho, &size, &mut JIQ::new(seed), k, seed);
+    print_sim_mean(time, rho, &size, &mut LWL_me::new(), k, seed);
+    print_sim_mean(time, rho, &size, &mut LWL_2me::new(), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMDbelow::new(8.0), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMDbelow::new(4.0), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMDbelow::new(2.0), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMD::new(8.0), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMD::new(4.0), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMD::new(2.0), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMD::new(1.5), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMD::new(1.2), k, seed);
+    print_sim_mean(time, rho, &size, &mut IMD::new(1.1), k, seed);
     print_sim_mean(
         time,
         rho,
@@ -518,16 +696,15 @@ fn main() {
         k,
         seed,
     );
-    print_sim_mean(time, rho, &size, &mut Cost::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut JSQ::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut Random::new(seed), 1, seed);
-    print_sim_mean(time, rho, &size, &mut JIQ::new(seed), k, seed);
-    print_sim_mean(time, rho, &size, &mut LWL::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut LWL_me::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut LWL_2me::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(2.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(1.5), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(1.2), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(1.1), k, seed);
-    print_sim_mean(time, rho, &size, &mut Random::new(seed), k, seed);
+    /*
+    print_sim_mean(
+        time,
+        rho,
+        &size,
+        &mut Cost3::new(&size, rho / size.mean()),
+        k,
+        seed,
+    );
+    */
+    */
 }
