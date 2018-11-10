@@ -7,11 +7,15 @@ use rand::thread_rng;
 extern crate quadrature;
 use quadrature::integrate;
 
+extern crate noisy_float;
+use noisy_float::prelude::*;
+
 use std::fmt;
 
 use std::f64::INFINITY;
 
 use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 const EPSILON: f64 = 1e-10;
 #[derive(Clone, Debug)]
@@ -50,11 +54,11 @@ impl Completion {
 }
 
 trait Dispatch: fmt::Display {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize;
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize;
 }
 
 impl<S: Dispatch + ?Sized> Dispatch for Box<S> {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         (**self).dispatch(job_size, queues)
     }
 }
@@ -73,7 +77,7 @@ impl Random {
 }
 
 impl Dispatch for Random {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, _job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         self.rng.gen_range(0, queues.len())
     }
 }
@@ -93,7 +97,7 @@ impl JSQ {
 }
 
 impl Dispatch for JSQ {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, _job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
@@ -123,7 +127,7 @@ impl JIQ {
 }
 
 impl Dispatch for JIQ {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, _job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .position(|q| q.is_empty())
@@ -146,11 +150,11 @@ impl LWL {
 }
 
 impl Dispatch for LWL {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, _job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
-            .map(|j| (j.0, j.1.iter().map(|j| j.rem_size).sum::<f64>()))
+            .map(|j| (j.0, j.1.values().map(|j| j.rem_size).sum::<f64>()))
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .unwrap()
             .0
@@ -171,7 +175,7 @@ impl LWL_me {
 }
 
 impl Dispatch for LWL_me {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
@@ -179,7 +183,7 @@ impl Dispatch for LWL_me {
                 (
                     j.0,
                     j.1
-                        .iter()
+                        .values()
                         .map(|j| j.rem_size)
                         .map(|f| if f > job_size { 0.0 } else { f })
                         .sum::<f64>()
@@ -206,14 +210,14 @@ impl Cost {
 }
 
 impl Dispatch for Cost {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
             .map(|j| {
                 (
                     j.0,
-                    j.1.iter().map(|j| j.rem_size.min(job_size)).sum::<f64>()
+                    j.1.values().map(|j| j.rem_size.min(job_size)).sum::<f64>()
                         + thread_rng().gen_range(0.0, job_size * 0.0001),
                 )
             })
@@ -242,7 +246,7 @@ impl Cost2 {
 }
 
 impl Dispatch for Cost2 {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
@@ -250,7 +254,7 @@ impl Dispatch for Cost2 {
                 (
                     j.0,
                     j.1
-                        .iter()
+                        .values()
                         .map(|j| {
                             let small_size = j.rem_size.min(job_size);
                             let large_size = j.rem_size.max(job_size);
@@ -290,7 +294,7 @@ impl Cost3 {
 }
 
 impl Dispatch for Cost3 {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
@@ -298,7 +302,7 @@ impl Dispatch for Cost3 {
                 (
                     j.0,
                     j.1
-                        .iter()
+                        .values()
                         .map(|j| {
                             let small_size = j.rem_size.min(job_size);
                             let large_size = j.rem_size.max(job_size);
@@ -334,7 +338,7 @@ impl LWL_2me {
 }
 
 impl Dispatch for LWL_2me {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         queues
             .iter()
             .enumerate()
@@ -342,7 +346,7 @@ impl Dispatch for LWL_2me {
                 (
                     j.0,
                     j.1
-                        .iter()
+                        .values()
                         .map(|j| j.rem_size)
                         .map(|f| if f > 2.0 * job_size { 0.0 } else { f })
                         .sum::<f64>()
@@ -377,7 +381,7 @@ impl IMD {
 }
 
 impl Dispatch for IMD {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         let p = (job_size.log(self.c)).floor() as i64;
         let rng = &mut self.rng;
         let work_in_p = self.sent.entry(p).or_insert_with(|| {
@@ -418,7 +422,7 @@ impl IMDbelow {
 }
 
 impl Dispatch for IMDbelow {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         let p = (job_size.log(self.c)).floor() as i64;
         if !self.sent.contains_key(&p) {
             let rng = &mut self.rng;
@@ -465,7 +469,7 @@ impl SITA {
 }
 
 impl Dispatch for SITA {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<BTreeMap<N64, Job>>) -> usize {
         let mean_below = self.size.mean_given_below(job_size);
         let load_below = mean_below / self.size.mean();
         (load_below * queues.len() as f64).floor() as usize
@@ -487,7 +491,7 @@ fn simulate(
     seed: u64,
 ) -> Vec<Completion> {
     let mut current_time: f64 = 0.;
-    let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
+    let mut queues: Vec<BTreeMap<N64, Job>> = vec![BTreeMap::new(); k];
     let mut completions: Vec<Completion> = vec![];
 
     let arrival_generator = Exp::new(lambda);
@@ -497,15 +501,10 @@ fn simulate(
     while current_time < end_time
         || queues
             .iter()
-            .any(|q| q.iter().any(|j| j.arrival_time < end_time))
+            .any(|q| q.values().any(|j| j.arrival_time < end_time))
     {
-        /*
-        queues
-            .iter_mut()
-            .for_each(|q| q.sort_by(|a, b| a.rem_size.partial_cmp(&b.rem_size).unwrap()));
-            */
         let job_increment = queues.iter().fold(INFINITY, |a, q| {
-            if let Some(job) = q.get(0) {
+            if let Some(job) = q.values().nth(0) {
                 a.min(job.rem_size)
             } else {
                 a
@@ -517,24 +516,29 @@ fn simulate(
         let arrival_occured = arrival_increment < EPSILON;
         for queue in &mut queues {
             if !queue.is_empty() {
-                queue[0].work(increment / k as f64);
-                if queue[0].rem_size < EPSILON {
-                    let finished_job = queue.remove(0);
-                    completions.push(Completion::from_job(finished_job, current_time));
+                let min_size = *queue.keys().nth(0).unwrap();
+                let mut min_size_job = queue.remove(&min_size).unwrap();
+                min_size_job.work(increment / k as f64);
+                if min_size_job.rem_size < EPSILON {
+                    completions.push(Completion::from_job(min_size_job, current_time));
+                } else {
+                    let was_there = queue.insert(n64(min_size_job.rem_size), min_size_job);
+                    assert!(was_there.is_none());
                 }
             }
         }
         if arrival_occured {
             let new_size = size_dist.sample(&mut rng);
             let i = dispatcher.dispatch(new_size, &queues);
-            queues[i].push(Job::new(new_size, current_time));
+            let was_there = queues[i].insert(n64(new_size), Job::new(new_size, current_time));
+            assert!(was_there.is_none());
             arrival_increment = arrival_generator.sample(&mut rng);
         }
     }
     //Treat all jobs unfinished at end as immediately completing
     for queue in queues {
-        for job in queue {
-            completions.push(Completion::from_job(job, current_time));
+        for job in queue.values() {
+            completions.push(Completion::from_job(job.clone(), current_time));
         }
     }
     completions
@@ -652,12 +656,12 @@ fn main() {
         size.variance() / size.mean().powf(2.0)
     );
     let rho = 0.9;
-    let time = 1e6;
+    let time = 1e5;
     let k = 10;
 
     let mut policies: Vec<Box<Dispatch>> = vec![Box::new(SITA::new(&size)), Box::new(LWL::new()), Box::new(Random::new(seed)), Box::new(JSQ::new()), Box::new(Cost::new())];
     println!(",{}", policies.iter().map(|p|format!("{}", p)).collect::<Vec<String>>().join(","));
-    for rho in vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99] {
+    for rho in vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9,/* 0.925, 0.95, 0.97, 0.98, 0.99*/] {
         let mut results = vec![rho];
         for policy in &mut policies {
         let lambda = rho / size.mean();
