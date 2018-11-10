@@ -7,6 +7,9 @@ use rand::thread_rng;
 extern crate quadrature;
 use quadrature::integrate;
 
+extern crate noisy_float;
+use noisy_float::prelude::*;
+
 use std::fmt;
 
 use std::f64::INFINITY;
@@ -499,11 +502,9 @@ fn simulate(
             .iter()
             .any(|q| q.iter().any(|j| j.arrival_time < end_time))
     {
-        /*
         queues
             .iter_mut()
-            .for_each(|q| q.sort_by(|a, b| a.rem_size.partial_cmp(&b.rem_size).unwrap()));
-            */
+            .for_each(|q| q.sort_by_key(|j| n64(j.rem_size)));
         let job_increment = queues.iter().fold(INFINITY, |a, q| {
             if let Some(job) = q.get(0) {
                 a.min(job.rem_size)
@@ -657,7 +658,7 @@ fn main() {
 
     let mut policies: Vec<Box<Dispatch>> = vec![Box::new(SITA::new(&size)), Box::new(LWL::new()), Box::new(Random::new(seed)), Box::new(JSQ::new()), Box::new(Cost::new())];
     println!(",{}", policies.iter().map(|p|format!("{}", p)).collect::<Vec<String>>().join(","));
-    for rho in vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99] {
+    for rho in vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, /*0.925, 0.95, 0.97, 0.98, 0.99*/] {
         let mut results = vec![rho];
         for policy in &mut policies {
         let lambda = rho / size.mean();
