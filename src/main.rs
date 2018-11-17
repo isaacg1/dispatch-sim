@@ -1,8 +1,8 @@
 extern crate rand;
-use rand::Rng;
 use rand::distributions::{Distribution, Exp};
 use rand::prng::isaac::IsaacRng;
 use rand::thread_rng;
+use rand::Rng;
 
 extern crate quadrature;
 use quadrature::integrate;
@@ -62,7 +62,7 @@ impl<S: Dispatch + ?Sized> Dispatch for Box<S> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Random {
     rng: IsaacRng,
 }
@@ -87,6 +87,7 @@ impl fmt::Display for Random {
     }
 }
 
+#[derive(Clone)]
 struct JSQ {}
 
 impl JSQ {
@@ -112,7 +113,7 @@ impl fmt::Display for JSQ {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct JIQ {
     rng: IsaacRng,
 }
@@ -140,6 +141,7 @@ impl fmt::Display for JIQ {
     }
 }
 
+#[derive(Clone)]
 struct LWL {}
 
 impl LWL {
@@ -165,6 +167,7 @@ impl fmt::Display for LWL {
         write!(f, "LWL")
     }
 }
+#[derive(Clone)]
 struct LWL_me {}
 
 impl LWL_me {
@@ -181,8 +184,7 @@ impl Dispatch for LWL_me {
             .map(|j| {
                 (
                     j.0,
-                    j.1
-                        .iter()
+                    j.1.iter()
                         .map(|j| j.rem_size)
                         .map(|f| if f > job_size { 0.0 } else { f })
                         .sum::<f64>()
@@ -200,6 +202,7 @@ impl fmt::Display for LWL_me {
         write!(f, "LWL_me")
     }
 }
+#[derive(Clone)]
 struct Cost {}
 
 impl Cost {
@@ -230,6 +233,7 @@ impl fmt::Display for Cost {
         write!(f, "Cost")
     }
 }
+#[derive(Clone)]
 struct Cost2 {
     size: Size,
     lambda: f64,
@@ -252,8 +256,7 @@ impl Dispatch for Cost2 {
             .map(|j| {
                 (
                     j.0,
-                    j.1
-                        .iter()
+                    j.1.iter()
                         .map(|j| {
                             let small_size = j.rem_size.min(job_size);
                             let large_size = j.rem_size.max(job_size);
@@ -278,6 +281,7 @@ impl fmt::Display for Cost2 {
         write!(f, "Cost2")
     }
 }
+#[derive(Clone)]
 struct Cost3 {
     size: Size,
     lambda: f64,
@@ -300,8 +304,7 @@ impl Dispatch for Cost3 {
             .map(|j| {
                 (
                     j.0,
-                    j.1
-                        .iter()
+                    j.1.iter()
                         .map(|j| {
                             let small_size = j.rem_size.min(job_size);
                             let large_size = j.rem_size.max(job_size);
@@ -328,6 +331,7 @@ impl fmt::Display for Cost3 {
         write!(f, "Cost3")
     }
 }
+#[derive(Clone)]
 struct LWL_2me {}
 
 impl LWL_2me {
@@ -344,8 +348,7 @@ impl Dispatch for LWL_2me {
             .map(|j| {
                 (
                     j.0,
-                    j.1
-                        .iter()
+                    j.1.iter()
                         .map(|j| j.rem_size)
                         .map(|f| if f > 2.0 * job_size { 0.0 } else { f })
                         .sum::<f64>()
@@ -363,6 +366,7 @@ impl fmt::Display for LWL_2me {
         write!(f, "LWL_2me")
     }
 }
+#[derive(Clone)]
 struct IMD {
     sent: HashMap<i64, Vec<f64>>,
     c: f64,
@@ -404,6 +408,7 @@ impl fmt::Display for IMD {
         write!(f, "IMD({})", self.c)
     }
 }
+#[derive(Clone)]
 struct IMDbelow {
     sent: HashMap<i64, Vec<f64>>,
     c: f64,
@@ -454,30 +459,36 @@ impl fmt::Display for IMDbelow {
         write!(f, "IMDbelow({})", self.c)
     }
 }
-// Load balanced SITA
+#[derive(Clone)]
 struct SITA {
     size: Size,
+    cutoffs: Vec<f64>,
 }
 
 impl SITA {
-    fn new(size: &Size) -> Self {
+    fn new(size: &Size, cutoffs: &Vec<f64>) -> Self {
         Self {
             size: size.clone(),
+            cutoffs: cutoffs.clone(),
         }
     }
 }
 
 impl Dispatch for SITA {
     fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        assert!(queues.len() == self.cutoffs.len() + 1);
         let mean_below = self.size.mean_given_below(job_size);
         let load_below = mean_below / self.size.mean();
-        (load_below * queues.len() as f64).floor() as usize
+        self.cutoffs
+            .iter()
+            .position(|&f| f > load_below)
+            .unwrap_or(queues.len() - 1)
     }
 }
 
 impl fmt::Display for SITA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SITA")
+        write!(f, "SITA({:?})", self.cutoffs)
     }
 }
 
@@ -545,8 +556,11 @@ enum Size {
     Exp(f64),
     Pareto(f64),
     Hyper(f64, f64, f64),
+    Bimodal(f64, f64, f64),
+    Trimodal(f64, f64, f64, f64, f64),
 }
 
+// Create bimodal
 impl Distribution<f64> for Size {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
         match self {
@@ -564,6 +578,23 @@ impl Distribution<f64> for Size {
                 let dist = Exp::new(1.0 / mean);
                 dist.sample(rng)
             }
+            &Size::Bimodal(low, high, low_prob) => {
+                if rng.gen_range::<f64>(0., 1.) < low_prob {
+                    low
+                } else {
+                    high
+                }
+            }
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => {
+                let p = rng.gen_range::<f64>(0., 1.);
+                if p < low_prob {
+                    low
+                } else if p < low_or_med_prob {
+                    med
+                } else {
+                    high
+                }
+            }
         }
     }
 }
@@ -578,6 +609,8 @@ impl Size {
             &Size::Exp(lambda) => 1.0 / lambda,
             &Size::Pareto(alpha) => alpha / (alpha - 1.0),
             &Size::Hyper(low, high, low_prob) => low * low_prob + high * (1.0 - low_prob),
+            &Size::Bimodal(low, high, low_prob) => low * low_prob + high * (1.0 - low_prob),
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => low * low_prob + med * (low_or_med_prob - low_prob) + high * (1.0 - low_or_med_prob)
         }
     }
     fn variance(&self) -> f64 {
@@ -588,6 +621,10 @@ impl Size {
                 2.0 * low * low * low_prob + 2.0 * high * high * (1.0 - low_prob)
                     - self.mean().powi(2)
             }
+            &Size::Bimodal(low, high, low_prob) => {
+                low * low * low_prob + high * high * (1.0 - low_prob) - self.mean().powi(2)
+            }
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => low * low * low_prob + med * med * (low_or_med_prob - low_prob) + high * high * (1.0 - low_or_med_prob) - self.mean().powi(2)
         }
     }
     fn fraction_below(&self, x: f64) -> f64 {
@@ -598,6 +635,8 @@ impl Size {
                 (1.0 - f64::exp((-1.0 / low) * x)) * low_prob
                     + (1.0 - f64::exp((-1.0 / high) * x)) * (1.0 - low_prob)
             }
+            &Size::Bimodal(low, high, low_prob) => unimplemented!(),
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
         }
     }
     fn mean_given_below(&self, x: f64) -> f64 {
@@ -608,10 +647,12 @@ impl Size {
                 Size::Exp(1.0 / low).mean_given_below(x) * low_prob
                     + Size::Exp(1.0 / high).mean_given_below(x) * (1.0 - low_prob)
             }
+            &Size::Bimodal(low, high, low_prob) => unimplemented!(),
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
         }
     }
     fn descending_busy_period(&self, x: f64, l: f64) -> f64 {
-        let integrand = &|t: f64|1.0/(1.0-l*self.mean_given_below(t));
+        let integrand = &|t: f64| 1.0 / (1.0 - l * self.mean_given_below(t));
         integrate(integrand, 0.0, x, 1e-6).integral
         //integrand(x)
     }
@@ -644,29 +685,98 @@ fn print_sim_mean(
 }
 fn main() {
     let seed = 0;
-    let size = Size::balanced_hyper(200.0);
+    let size = Size::Bimodal(1.0, 10.0, 0.0);
+    //let size = Size::balanced_hyper(1000.0);
     //let size = Size::Exp(1.0);
-    //let size = Size::Pareto(2.01);
+    //let size = Size::Pareto(1.2);
+    println!("{:?}", size);
     println!(
         "Mean: {}, C^2: {}",
         size.mean(),
         size.variance() / size.mean().powf(2.0)
     );
     let rho = 0.9;
-    let time = 1e6;
-    let k = 10;
+    let time = 1e5;
+    let k = 30;
 
-    let mut policies: Vec<Box<Dispatch>> = vec![Box::new(SITA::new(&size)), Box::new(LWL::new()), Box::new(Random::new(seed)), Box::new(JSQ::new()), Box::new(Cost::new())];
-    println!(",{}", policies.iter().map(|p|format!("{}", p)).collect::<Vec<String>>().join(","));
-    for rho in vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, /*0.925, 0.95, 0.97, 0.98, 0.99*/] {
+    let mut policies: Vec<Box<Dispatch>> = vec![
+        /*
+        Box::new(SITA::new(&size, &vec![0.5])),
+        Box::new(SITA::new(&size, &vec![0.52])),
+        Box::new(SITA::new(&size, &vec![0.54])),
+        Box::new(SITA::new(&size, &vec![0.56])),
+        Box::new(SITA::new(&size, &vec![0.58])),
+        Box::new(SITA::new(&size, &vec![0.6])),
+        Box::new(SITA::new(&size, &vec![0.62])),
+        Box::new(SITA::new(&size, &vec![0.64])),
+        Box::new(SITA::new(&size, &vec![0.66])),
+        Box::new(SITA::new(&size, &vec![0.68])),
+        Box::new(SITA::new(&size, &vec![0.7])),
+        */
+        //Box::new(LWL::new()),
+        //Box::new(Random::new(seed)),
+        Box::new(JSQ::new()),
+        Box::new(Cost::new()),
+        Box::new(IMD::new(2.0)),
+        Box::new(LWL::new()),
+    ];
+    println!(
+        ",{}",
+        policies
+            .iter()
+            .map(|p| format!("{}", p))
+            .collect::<Vec<String>>()
+            .join(",")
+    );
+    for rho in vec![
+        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99,
+    ] {
         let mut results = vec![rho];
-        for policy in &mut policies {
-        let lambda = rho / size.mean();
-        let completions = simulate(time, lambda, &size, policy, k, seed);
-        let mean = completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
-        results.push(mean);
+        let mut policies: Vec<Box<Dispatch>> = vec![
+        /*
+        Box::new(SITA::new(&size, &vec![0.5])),
+        Box::new(SITA::new(&size, &vec![0.52])),
+        Box::new(SITA::new(&size, &vec![0.54])),
+        Box::new(SITA::new(&size, &vec![0.56])),
+        Box::new(SITA::new(&size, &vec![0.58])),
+        Box::new(SITA::new(&size, &vec![0.6])),
+        Box::new(SITA::new(&size, &vec![0.62])),
+        Box::new(SITA::new(&size, &vec![0.64])),
+        Box::new(SITA::new(&size, &vec![0.66])),
+        Box::new(SITA::new(&size, &vec![0.68])),
+        Box::new(SITA::new(&size, &vec![0.7])),
+        */
+        //Box::new(LWL::new()),
+        //Box::new(Random::new(seed)),
+        Box::new(JSQ::new()),
+        Box::new(Cost::new()),
+        Box::new(IMD::new(2.0)),
+        Box::new(LWL::new()),
+    ];
+        for (i, policy) in policies.iter_mut().enumerate() {
+            /*
+            if i < 11 {
+                if (0.5 + i as f64 * 0.02) * rho * k as f64 > 1.0 {
+                    results.push(INFINITY);
+                    continue;
+                }
+            }
+            */
+            let lambda = rho / size.mean();
+            let completions = simulate(time, lambda, &size, policy, k, seed);
+            let mean =
+                completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
+            results.push(mean);
         }
-        println!("{}", results.iter().map(|p|format!("{}", p)).collect::<Vec<String>>().join(","));
+        println!(
+            "{},{}",
+            results
+                .iter()
+                .map(|p| format!("{:.6}", p))
+                .collect::<Vec<String>>()
+                .join(","),
+            results[3]/results[1]
+        );
     }
     /*
     print_sim_mean(time, rho, &size, &mut SITA::new(&size), k, seed);
