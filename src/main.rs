@@ -492,6 +492,31 @@ impl fmt::Display for SITA {
     }
 }
 
+struct RR {
+    last: usize,
+}
+
+impl RR {
+    fn new() -> Self {
+        Self { last: 0 }
+    }
+}
+
+impl Dispatch for RR {
+    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        assert!(self.last < queues.len());
+        let next = (self.last + 1) % queues.len();
+        self.last = next;
+        next
+    }
+}
+
+impl fmt::Display for RR {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RR")
+    }
+}
+
 fn simulate(
     end_time: f64,
     lambda: f64,
@@ -507,6 +532,11 @@ fn simulate(
     let arrival_generator = Exp::new(lambda);
     let mut rng = IsaacRng::new_from_u64(seed);
     let mut arrival_increment = arrival_generator.sample(&mut rng);
+
+    let c = 2.0;
+    let guardrail_multiplier = 10.0;
+    let mut work_in_ranks: HashMap<i32, Vec<f64>> = HashMap::new();
+    let mut num_bad_dispatches = 0;
 
     while current_time < end_time
         || queues
@@ -538,9 +568,24 @@ fn simulate(
         }
         if arrival_occured {
             let new_size = size_dist.sample(&mut rng);
-            let i = dispatcher.dispatch(new_size, &queues);
-            queues[i].push(Job::new(new_size, current_time));
+            let mut i = dispatcher.dispatch(new_size, &queues);
             arrival_increment = arrival_generator.sample(&mut rng);
+
+            let rank = new_size.log(c).floor() as i32;
+            let ((i_min, min), imbalance) =
+            {
+            let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
+            work_in_rank[i] += new_size;
+                let (i_min, min) = work_in_rank.iter().cloned().enumerate().fold((0, INFINITY), |a, b| if a.1 < b.1 { a } else { b });
+            let imbalance = work_in_rank[i] - min;
+            ((i_min, min), imbalance)
+            };
+            if imbalance > guardrail_multiplier * c.powi(rank + 1) {
+                num_bad_dispatches += 1;
+                i = i_min;
+                println!("{:#?}\n{:?}\n{}", work_in_ranks, (i_min, min), imbalance);
+            }
+            queues[i].push(Job::new(new_size, current_time));
         }
     }
     //Treat all jobs unfinished at end as immediately completing
@@ -549,6 +594,13 @@ fn simulate(
             completions.push(Completion::from_job(job, current_time));
         }
     }
+    println!(
+        "bad: {}, c: {}, g: {}, disp: {}",
+        num_bad_dispatches as f64 / completions.len() as f64,
+        c,
+        guardrail_multiplier,
+        dispatcher
+    );
     completions
 }
 #[derive(Clone, Debug)]
@@ -610,7 +662,9 @@ impl Size {
             &Size::Pareto(alpha) => alpha / (alpha - 1.0),
             &Size::Hyper(low, high, low_prob) => low * low_prob + high * (1.0 - low_prob),
             &Size::Bimodal(low, high, low_prob) => low * low_prob + high * (1.0 - low_prob),
-            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => low * low_prob + med * (low_or_med_prob - low_prob) + high * (1.0 - low_or_med_prob)
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => {
+                low * low_prob + med * (low_or_med_prob - low_prob) + high * (1.0 - low_or_med_prob)
+            }
         }
     }
     fn variance(&self) -> f64 {
@@ -624,7 +678,12 @@ impl Size {
             &Size::Bimodal(low, high, low_prob) => {
                 low * low * low_prob + high * high * (1.0 - low_prob) - self.mean().powi(2)
             }
-            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => low * low * low_prob + med * med * (low_or_med_prob - low_prob) + high * high * (1.0 - low_or_med_prob) - self.mean().powi(2)
+            &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => {
+                low * low * low_prob
+                    + med * med * (low_or_med_prob - low_prob)
+                    + high * high * (1.0 - low_or_med_prob)
+                    - self.mean().powi(2)
+            }
         }
     }
     fn fraction_below(&self, x: f64) -> f64 {
@@ -684,50 +743,23 @@ fn print_sim_mean(
     );
 }
 fn main() {
+    let rho = 0.9;
+    let time = 1e3;
+    let k = 2;
+
     let seed = 0;
-    let size = Size::Bimodal(1.0, 10.0, 0.0);
-    //let size = Size::balanced_hyper(1000.0);
+    //let size = Size::Bimodal(1.0, 10.0, 0.9);
+    let size = Size::balanced_hyper(1000.0);
     //let size = Size::Exp(1.0);
     //let size = Size::Pareto(1.2);
     println!("{:?}", size);
     println!(
-        "Mean: {}, C^2: {}",
+        "k: {}, Mean: {}, C^2: {}",
+        k,
         size.mean(),
         size.variance() / size.mean().powf(2.0)
     );
-    let rho = 0.9;
-    let time = 1e5;
-    let k = 30;
-
-    let mut policies: Vec<Box<Dispatch>> = vec![
-        /*
-        Box::new(SITA::new(&size, &vec![0.5])),
-        Box::new(SITA::new(&size, &vec![0.52])),
-        Box::new(SITA::new(&size, &vec![0.54])),
-        Box::new(SITA::new(&size, &vec![0.56])),
-        Box::new(SITA::new(&size, &vec![0.58])),
-        Box::new(SITA::new(&size, &vec![0.6])),
-        Box::new(SITA::new(&size, &vec![0.62])),
-        Box::new(SITA::new(&size, &vec![0.64])),
-        Box::new(SITA::new(&size, &vec![0.66])),
-        Box::new(SITA::new(&size, &vec![0.68])),
-        Box::new(SITA::new(&size, &vec![0.7])),
-        */
-        //Box::new(LWL::new()),
-        //Box::new(Random::new(seed)),
-        Box::new(JSQ::new()),
-        Box::new(Cost::new()),
-        Box::new(IMD::new(2.0)),
-        Box::new(LWL::new()),
-    ];
-    println!(
-        ",{}",
-        policies
-            .iter()
-            .map(|p| format!("{}", p))
-            .collect::<Vec<String>>()
-            .join(",")
-    );
+    let mut to_print = true;
     for rho in vec![
         0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99,
     ] {
@@ -746,13 +778,25 @@ fn main() {
         Box::new(SITA::new(&size, &vec![0.68])),
         Box::new(SITA::new(&size, &vec![0.7])),
         */
-        //Box::new(LWL::new()),
-        //Box::new(Random::new(seed)),
-        Box::new(JSQ::new()),
-        Box::new(Cost::new()),
-        Box::new(IMD::new(2.0)),
         Box::new(LWL::new()),
+        Box::new(Random::new(seed)),
+        Box::new(JSQ::new()),
+        //Box::new(Cost::new()),
+        Box::new(IMD::new(2.0)),
+        Box::new(RR::new()),
     ];
+        if to_print {
+            println!(
+                ",{}",
+                policies
+                    .iter()
+                    .map(|p| format!("{}", p))
+                    .collect::<Vec<String>>()
+                    .join(",")
+            );
+            to_print = false;
+        }
+
         for (i, policy) in policies.iter_mut().enumerate() {
             /*
             if i < 11 {
@@ -769,13 +813,12 @@ fn main() {
             results.push(mean);
         }
         println!(
-            "{},{}",
+            "{}",
             results
                 .iter()
                 .map(|p| format!("{:.6}", p))
                 .collect::<Vec<String>>()
                 .join(","),
-            results[3]/results[1]
         );
     }
     /*
