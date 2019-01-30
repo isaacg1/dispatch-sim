@@ -534,7 +534,7 @@ fn simulate(
     let mut arrival_increment = arrival_generator.sample(&mut rng);
 
     let c = 2.0;
-    let guardrail_multiplier = 10.0;
+    let guardrail_multiplier = 1.0;
     let mut work_in_ranks: HashMap<i32, Vec<f64>> = HashMap::new();
     let mut num_bad_dispatches = 0;
 
@@ -568,24 +568,28 @@ fn simulate(
         }
         if arrival_occured {
             let new_size = size_dist.sample(&mut rng);
-            let mut i = dispatcher.dispatch(new_size, &queues);
+            let i = dispatcher.dispatch(new_size, &queues);
             arrival_increment = arrival_generator.sample(&mut rng);
 
             let rank = new_size.log(c).floor() as i32;
-            let ((i_min, min), imbalance) =
-            {
-            let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
-            work_in_rank[i] += new_size;
+            let new_i = {
+                let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
                 let (i_min, min) = work_in_rank.iter().cloned().enumerate().fold((0, INFINITY), |a, b| if a.1 < b.1 { a } else { b });
-            let imbalance = work_in_rank[i] - min;
-            ((i_min, min), imbalance)
+                let reroute = i != i_min && work_in_rank[i] - min + new_size > guardrail_multiplier * c.powi(rank + 1);
+                let new_i = if reroute {
+                    i_min
+                } else {
+                    i
+                };
+                work_in_rank[new_i] += new_size;
+                new_i
             };
-            if imbalance > guardrail_multiplier * c.powi(rank + 1) {
+            queues[new_i].push(Job::new(new_size, current_time));
+
+            if new_i != i {
                 num_bad_dispatches += 1;
-                i = i_min;
-                println!("{:#?}\n{:?}\n{}", work_in_ranks, (i_min, min), imbalance);
+                //println!("{:#?}\nQueue: {}\nSize: {}", work_in_ranks, new_i, new_size);
             }
-            queues[i].push(Job::new(new_size, current_time));
         }
     }
     //Treat all jobs unfinished at end as immediately completing
@@ -744,12 +748,12 @@ fn print_sim_mean(
 }
 fn main() {
     let rho = 0.9;
-    let time = 1e3;
+    let time = 1e5;
     let k = 2;
 
     let seed = 0;
-    //let size = Size::Bimodal(1.0, 10.0, 0.9);
-    let size = Size::balanced_hyper(1000.0);
+    let size = Size::Bimodal(1.0, 10.0, 0.9);
+    //let size = Size::balanced_hyper(1000.0);
     //let size = Size::Exp(1.0);
     //let size = Size::Pareto(1.2);
     println!("{:?}", size);
