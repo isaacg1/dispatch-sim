@@ -1,3 +1,4 @@
+#![allow(warnings)]
 extern crate rand;
 use rand::distributions::{Distribution, Exp};
 use rand::prng::isaac::IsaacRng;
@@ -517,16 +518,19 @@ impl fmt::Display for RR {
     }
 }
 
-const guard_c: f64 = 2.0;
-const guardrail_multiplier: Option<f64> = Some(10.0); 
 fn simulate(
     end_time: f64,
-    lambda: f64,
+    rho: f64,
     size_dist: &Size,
     dispatcher: &mut impl Dispatch,
     k: usize,
     seed: u64,
 ) -> Vec<Completion> {
+    let lambda = rho / size_dist.mean();
+    let guard_c: f64 = 2.0;
+    let guard_c: f64 = 1.0 + 1.0/(1.0/(1.0 - rho)).log();
+    let guardrail_multiplier: Option<f64> = None;
+
     let mut current_time: f64 = 0.;
     let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
     let mut completions: Vec<Completion> = vec![];
@@ -602,6 +606,7 @@ fn simulate(
             completions.push(Completion::from_job(job, current_time));
         }
     }
+    /*
     println!(
         "bad: {}, c: {}, g: {:?}, disp: {}",
         num_bad_dispatches as f64 / completions.len() as f64,
@@ -609,6 +614,7 @@ fn simulate(
         guardrail_multiplier,
         dispatcher
     );
+    */
     completions
 }
 #[derive(Clone, Debug)]
@@ -751,13 +757,12 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let rho = 0.9;
-    let time = 1e6;
-    let k = 2;
+    let time = 1e5;
+    let k = 10;
 
     let seed = 0;
-    //let size = Size::Bimodal(1.0, 1000.0, 0.9995);
-    let size = Size::Bimodal(1.0, 100.0, 0.99);
+    let size = Size::Bimodal(1.0, 1000.0, 0.9995);
+    //let size = Size::Bimodal(1.0, 100.0, 0.99);
     //let size = Size::balanced_hyper(1000.0);
     //let size = Size::Exp(1.0);
     //let size = Size::Pareto(1.2);
@@ -796,9 +801,7 @@ fn main() {
         ];
         if to_print {
             println!(
-                "c={}&g={:?},{}",
-                guard_c,
-                guardrail_multiplier,
+                ",{}",
                 policies
                     .iter()
                     .map(|p| format!("{}", p))
@@ -817,8 +820,7 @@ fn main() {
                 }
             }
             */
-            let lambda = rho / size.mean();
-            let completions = simulate(time, lambda, &size, policy, k, seed);
+            let completions = simulate(time, rho, &size, policy, k, seed);
             let mean =
                 completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
             results.push(mean);
