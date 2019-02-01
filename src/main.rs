@@ -517,6 +517,8 @@ impl fmt::Display for RR {
     }
 }
 
+const guard_c: f64 = 2.0;
+const guardrail_multiplier: Option<f64> = Some(10.0); 
 fn simulate(
     end_time: f64,
     lambda: f64,
@@ -533,8 +535,6 @@ fn simulate(
     let mut rng = IsaacRng::new_from_u64(seed);
     let mut arrival_increment = arrival_generator.sample(&mut rng);
 
-    let c = 2.0;
-    let guardrail_multiplier = 1.0;
     let mut work_in_ranks: HashMap<i32, Vec<f64>> = HashMap::new();
     let mut num_bad_dispatches = 0;
 
@@ -571,18 +571,22 @@ fn simulate(
             let i = dispatcher.dispatch(new_size, &queues);
             arrival_increment = arrival_generator.sample(&mut rng);
 
-            let rank = new_size.log(c).floor() as i32;
-            let new_i = {
+            let rank = new_size.log(guard_c).floor() as i32;
+            let new_i = if let Some(guardrail_multiplier_f) = guardrail_multiplier {
                 let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
-                let (i_min, min) = work_in_rank.iter().cloned().enumerate().fold((0, INFINITY), |a, b| if a.1 < b.1 { a } else { b });
-                let reroute = i != i_min && work_in_rank[i] - min + new_size > guardrail_multiplier * c.powi(rank + 1);
-                let new_i = if reroute {
-                    i_min
-                } else {
-                    i
-                };
+                let (i_min, min) = work_in_rank
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .fold((0, INFINITY), |a, b| if a.1 < b.1 { a } else { b });
+                let reroute = i != i_min
+                    && work_in_rank[i] - min + new_size
+                        > guardrail_multiplier_f * guard_c.powi(rank + 1);
+                let new_i = if reroute { i_min } else { i };
                 work_in_rank[new_i] += new_size;
                 new_i
+            } else {
+                i
             };
             queues[new_i].push(Job::new(new_size, current_time));
 
@@ -599,9 +603,9 @@ fn simulate(
         }
     }
     println!(
-        "bad: {}, c: {}, g: {}, disp: {}",
+        "bad: {}, c: {}, g: {:?}, disp: {}",
         num_bad_dispatches as f64 / completions.len() as f64,
-        c,
+        guard_c,
         guardrail_multiplier,
         dispatcher
     );
@@ -748,11 +752,12 @@ fn print_sim_mean(
 }
 fn main() {
     let rho = 0.9;
-    let time = 1e5;
+    let time = 1e6;
     let k = 2;
 
     let seed = 0;
-    let size = Size::Bimodal(1.0, 10.0, 0.9);
+    //let size = Size::Bimodal(1.0, 1000.0, 0.9995);
+    let size = Size::Bimodal(1.0, 100.0, 0.99);
     //let size = Size::balanced_hyper(1000.0);
     //let size = Size::Exp(1.0);
     //let size = Size::Pareto(1.2);
@@ -769,29 +774,31 @@ fn main() {
     ] {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
-        /*
-        Box::new(SITA::new(&size, &vec![0.5])),
-        Box::new(SITA::new(&size, &vec![0.52])),
-        Box::new(SITA::new(&size, &vec![0.54])),
-        Box::new(SITA::new(&size, &vec![0.56])),
-        Box::new(SITA::new(&size, &vec![0.58])),
-        Box::new(SITA::new(&size, &vec![0.6])),
-        Box::new(SITA::new(&size, &vec![0.62])),
-        Box::new(SITA::new(&size, &vec![0.64])),
-        Box::new(SITA::new(&size, &vec![0.66])),
-        Box::new(SITA::new(&size, &vec![0.68])),
-        Box::new(SITA::new(&size, &vec![0.7])),
-        */
-        Box::new(LWL::new()),
-        Box::new(Random::new(seed)),
-        Box::new(JSQ::new()),
-        //Box::new(Cost::new()),
-        Box::new(IMD::new(2.0)),
-        Box::new(RR::new()),
-    ];
+            /*
+            Box::new(SITA::new(&size, &vec![0.5])),
+            Box::new(SITA::new(&size, &vec![0.52])),
+            Box::new(SITA::new(&size, &vec![0.54])),
+            Box::new(SITA::new(&size, &vec![0.56])),
+            Box::new(SITA::new(&size, &vec![0.58])),
+            Box::new(SITA::new(&size, &vec![0.6])),
+            Box::new(SITA::new(&size, &vec![0.62])),
+            Box::new(SITA::new(&size, &vec![0.64])),
+            Box::new(SITA::new(&size, &vec![0.66])),
+            Box::new(SITA::new(&size, &vec![0.68])),
+            Box::new(SITA::new(&size, &vec![0.7])),
+            */
+            Box::new(LWL::new()),
+            Box::new(Random::new(seed)),
+            Box::new(JSQ::new()),
+            //Box::new(Cost::new()),
+            Box::new(IMD::new(2.0)),
+            Box::new(RR::new()),
+        ];
         if to_print {
             println!(
-                ",{}",
+                "c={}&g={:?},{}",
+                guard_c,
+                guardrail_multiplier,
                 policies
                     .iter()
                     .map(|p| format!("{}", p))
