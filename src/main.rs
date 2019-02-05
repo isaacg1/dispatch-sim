@@ -529,7 +529,7 @@ fn simulate(
     let lambda = rho / size_dist.mean();
     //let guard_c: f64 = 2.0;
     let guard_c: f64 = 1.0 + 1.0/(1.0/(1.0 - rho)).ln();
-    let guardrail_multiplier: Option<f64> = Some(4.0);
+    let guardrail_multiplier: Option<f64> = Some(10.0);
 
     let mut current_time: f64 = 0.;
     let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
@@ -757,7 +757,7 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 1e6;
+    let time = 1e5;
     let k = 10;
 
     let seed = 0;
@@ -792,12 +792,14 @@ fn main() {
             Box::new(SITA::new(&size, &vec![0.68])),
             Box::new(SITA::new(&size, &vec![0.7])),
             */
-            Box::new(LWL::new()),
+            //Box::new(LWL::new()),
             Box::new(Random::new(seed)),
             //Box::new(JSQ::new()),
             //Box::new(Cost::new()),
             //Box::new(IMD::new(2.0)),
-            //Box::new(RR::new()),
+            Box::new(RR::new()),
+            Box::new(JIQ::new(seed)),
+            Box::new(JSQ::new()),
         ];
         if to_print {
             println!(
