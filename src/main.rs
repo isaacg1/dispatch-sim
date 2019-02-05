@@ -527,9 +527,9 @@ fn simulate(
     seed: u64,
 ) -> Vec<Completion> {
     let lambda = rho / size_dist.mean();
-    let guard_c: f64 = 2.0;
-    let guard_c: f64 = 1.0 + 1.0/(1.0/(1.0 - rho)).log();
-    let guardrail_multiplier: Option<f64> = None;
+    //let guard_c: f64 = 2.0;
+    let guard_c: f64 = 1.0 + 1.0/(1.0/(1.0 - rho)).ln();
+    let guardrail_multiplier: Option<f64> = Some(4.0);
 
     let mut current_time: f64 = 0.;
     let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
@@ -757,7 +757,7 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 1e5;
+    let time = 1e6;
     let k = 10;
 
     let seed = 0;
@@ -774,9 +774,9 @@ fn main() {
         size.variance() / size.mean().powf(2.0)
     );
     let mut to_print = true;
-    for rho in vec![
-        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99,
-    ] {
+    let standard_rhos = vec![0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99];
+    let small_rhos = vec![0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26];
+    for rho in standard_rhos {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
             /*
@@ -794,10 +794,10 @@ fn main() {
             */
             Box::new(LWL::new()),
             Box::new(Random::new(seed)),
-            Box::new(JSQ::new()),
+            //Box::new(JSQ::new()),
             //Box::new(Cost::new()),
-            Box::new(IMD::new(2.0)),
-            Box::new(RR::new()),
+            //Box::new(IMD::new(2.0)),
+            //Box::new(RR::new()),
         ];
         if to_print {
             println!(
