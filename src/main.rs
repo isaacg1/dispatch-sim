@@ -114,6 +114,41 @@ impl fmt::Display for JSQ {
     }
 }
 
+#[derive(Clone)]
+struct JSQ_d {
+    rng: IsaacRng,
+    d: usize,
+}
+
+impl JSQ_d {
+    fn new(seed: u64, d: usize) -> Self {
+        Self {
+            rng: IsaacRng::new_from_u64(seed),
+            d,
+        }
+    }
+}
+
+impl Dispatch for JSQ_d {
+    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+        let candidates: Vec<usize> = if queues.len() < self.d {
+            (0..queues.len()).collect()
+        } else {
+            rand::sample(&mut self.rng, 0..queues.len(), self.d)
+        };
+        candidates
+            .into_iter()
+            .min_by_key(|&c| queues[c].len())
+            .unwrap()
+    }
+}
+
+impl fmt::Display for JSQ_d {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "JSQ_d({})", self.d)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct JIQ {
     rng: IsaacRng,
@@ -529,11 +564,12 @@ fn simulate(
     let lambda = rho / size_dist.mean();
     //let guard_c: f64 = 2.0;
     let guard_c: f64 = 1.0 + 1.0 / (1.0 + (1.0 / (1.0 - rho)).ln());
-    //let guardrail_multiplier: Option<f64> = Some(4.0);
-    let guardrail_multiplier: Option<f64> = None;
+    let guardrail_multiplier: Option<f64> = Some(4.0);
+    //let guardrail_multiplier: Option<f64> = None;
 
     let mut current_time: f64 = 0.;
     let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
+    let mut set_to_empty: Vec<bool> = vec![false; k];
     let mut completions: Vec<Completion> = vec![];
 
     let arrival_generator = Exp::new(lambda);
@@ -573,7 +609,7 @@ fn simulate(
         }
         if let Some(guardrail_multiplier_f) = guardrail_multiplier {
             for (i, queue) in queues.iter().enumerate() {
-                if queue.is_empty() {
+                if !set_to_empty[i] && queue.is_empty(){
                     for work_in_rank in work_in_ranks.values_mut() {
                         let min = *work_in_rank
                             .iter()
@@ -581,6 +617,7 @@ fn simulate(
                             .unwrap();
                         work_in_rank[i] = min;
                     }
+                    set_to_empty[i] = true;
                 }
             }
         }
@@ -607,6 +644,7 @@ fn simulate(
                 i
             };
             queues[new_i].push(Job::new(new_size, current_time));
+            set_to_empty[new_i] = false;
 
             if new_i != i {
                 num_bad_dispatches += 1;
@@ -775,10 +813,10 @@ fn main() {
     let k = 10;
 
     let seed = 0;
-    let size = Size::Bimodal(1.0, 1000.0, 0.9995);
+    //let size = Size::Bimodal(1.0, 1000.0, 0.9995);
     //let size = Size::Bimodal(1.0, 100.0, 0.99);
     //let size = Size::balanced_hyper(1000.0);
-    //let size = Size::Hyper(1.0, 1000.0, 0.9993);
+    let size = Size::Hyper(1.0, 1000.0, 0.9993);
     //let size = Size::Exp(1.0);
     //let size = Size::Pareto(2.2);
     println!("{:?}", size);
@@ -814,12 +852,12 @@ fn main() {
             */
             Box::new(LWL::new()),
             Box::new(Random::new(seed)),
-            //Box::new(JSQ::new()),
+            Box::new(JSQ::new()),
             //Box::new(Cost::new()),
             //Box::new(IMD::new(2.0)),
-            //Box::new(RR::new()),
-            //Box::new(JIQ::new(seed)),
-            //Box::new(JSQ::new()),
+            Box::new(RR::new()),
+            Box::new(JIQ::new(seed)),
+            Box::new(JSQ_d::new(seed, 2)),
         ];
         if to_print {
             println!(
