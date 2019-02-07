@@ -54,12 +54,18 @@ impl Completion {
 }
 
 trait Dispatch: fmt::Display {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize;
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>, candidates: &Vec<usize>)
+        -> usize;
 }
 
 impl<S: Dispatch + ?Sized> Dispatch for Box<S> {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        (**self).dispatch(job_size, queues)
+    fn dispatch(
+        &mut self,
+        job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        (**self).dispatch(job_size, queues, candidates)
     }
 }
 
@@ -77,7 +83,12 @@ impl Random {
 }
 
 impl Dispatch for Random {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
         self.rng.gen_range(0, queues.len())
     }
 }
@@ -98,7 +109,12 @@ impl JSQ {
 }
 
 impl Dispatch for JSQ {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
         queues
             .iter()
             .enumerate()
@@ -130,15 +146,16 @@ impl JSQ_d {
 }
 
 impl Dispatch for JSQ_d {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        let candidates: Vec<usize> = if queues.len() < self.d {
-            (0..queues.len()).collect()
-        } else {
-            rand::sample(&mut self.rng, 0..queues.len(), self.d)
-        };
-        candidates
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let observed_candidates = rand::sample(&mut self.rng, candidates, self.d);
+        *observed_candidates
             .into_iter()
-            .min_by_key(|&c| queues[c].len())
+            .min_by_key(|&&c| queues[c].len())
             .unwrap()
     }
 }
@@ -163,10 +180,16 @@ impl JIQ {
 }
 
 impl Dispatch for JIQ {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        queues
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        candidates
             .iter()
-            .position(|q| q.is_empty())
+            .cloned()
+            .find(|&c| queues[c].is_empty())
             .unwrap_or_else(|| self.rng.gen_range(0, queues.len()))
     }
 }
@@ -187,7 +210,12 @@ impl LWL {
 }
 
 impl Dispatch for LWL {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
         queues
             .iter()
             .enumerate()
@@ -203,6 +231,7 @@ impl fmt::Display for LWL {
         write!(f, "LWL")
     }
 }
+/*
 #[derive(Clone)]
 struct LWL_me {}
 
@@ -527,23 +556,32 @@ impl fmt::Display for SITA {
         write!(f, "SITA({:?})", self.cutoffs)
     }
 }
+*/
 
 struct RR {
-    last: usize,
+    dispatches: Vec<usize>,
 }
 
 impl RR {
-    fn new() -> Self {
-        Self { last: 0 }
+    fn new(k: usize) -> Self {
+        Self {
+            dispatches: (0..k).collect(),
+        }
     }
 }
 
 impl Dispatch for RR {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        assert!(self.last < queues.len());
-        let next = (self.last + 1) % queues.len();
-        self.last = next;
-        next
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let (i, &dispatch) = self.dispatches.iter().enumerate().find(|(_, d)| candidates.contains(d));
+        TODO: This!
+        self.dispatches.remove(i);
+        self.dispatches.push(dispatch);
+        return dispatch;
     }
 }
 
@@ -609,7 +647,7 @@ fn simulate(
         }
         if let Some(guardrail_multiplier_f) = guardrail_multiplier {
             for (i, queue) in queues.iter().enumerate() {
-                if !set_to_empty[i] && queue.is_empty(){
+                if !set_to_empty[i] && queue.is_empty() {
                     for work_in_rank in work_in_ranks.values_mut() {
                         let min = *work_in_rank
                             .iter()
@@ -623,33 +661,29 @@ fn simulate(
         }
         if arrival_occured {
             let new_size = size_dist.sample(&mut rng);
-            let i = dispatcher.dispatch(new_size, &queues);
+            let candidates: Vec<usize> = if let Some(guardrail_multiplier_f) = guardrail_multiplier
+            {
+                let rank = new_size.log(guard_c).floor() as i32;
+                let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
+                let min = work_in_rank
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(&b).unwrap())
+                    .unwrap();
+                (0..queues.len())
+                    .filter(|&i| {
+                        work_in_rank[i] - min + new_size
+                            > guardrail_multiplier_f * guard_c.powi(rank + 1)
+                    })
+                    .collect()
+            } else {
+                (0..queues.len()).collect()
+            };
+            assert!(!candidates.is_empty());
+            let i = dispatcher.dispatch(new_size, &queues, &candidates);
             arrival_increment = arrival_generator.sample(&mut rng);
 
-            let rank = new_size.log(guard_c).floor() as i32;
-            let new_i = if let Some(guardrail_multiplier_f) = guardrail_multiplier {
-                let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
-                let (i_min, min) = work_in_rank
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .fold((0, INFINITY), |a, b| if a.1 < b.1 { a } else { b });
-                let reroute = i != i_min
-                    && work_in_rank[i] - min + new_size
-                        > guardrail_multiplier_f * guard_c.powi(rank + 1);
-                let new_i = if reroute { i_min } else { i };
-                work_in_rank[new_i] += new_size;
-                new_i
-            } else {
-                i
-            };
-            queues[new_i].push(Job::new(new_size, current_time));
-            set_to_empty[new_i] = false;
-
-            if new_i != i {
-                num_bad_dispatches += 1;
-                //println!("{:#?}\nQueue: {}\nSize: {}", work_in_ranks, new_i, new_size);
-            }
+            queues[i].push(Job::new(new_size, current_time));
+            set_to_empty[i] = false;
         }
     }
     //Treat all jobs unfinished at end as immediately completing
@@ -837,25 +871,10 @@ fn main() {
     for rho in standard_rhos {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
-            /*
-            Box::new(SITA::new(&size, &vec![0.5])),
-            Box::new(SITA::new(&size, &vec![0.52])),
-            Box::new(SITA::new(&size, &vec![0.54])),
-            Box::new(SITA::new(&size, &vec![0.56])),
-            Box::new(SITA::new(&size, &vec![0.58])),
-            Box::new(SITA::new(&size, &vec![0.6])),
-            Box::new(SITA::new(&size, &vec![0.62])),
-            Box::new(SITA::new(&size, &vec![0.64])),
-            Box::new(SITA::new(&size, &vec![0.66])),
-            Box::new(SITA::new(&size, &vec![0.68])),
-            Box::new(SITA::new(&size, &vec![0.7])),
-            */
             Box::new(LWL::new()),
             Box::new(Random::new(seed)),
             Box::new(JSQ::new()),
-            //Box::new(Cost::new()),
-            //Box::new(IMD::new(2.0)),
-            Box::new(RR::new()),
+            Box::new(RR::new(k)),
             Box::new(JIQ::new(seed)),
             Box::new(JSQ_d::new(seed, 2)),
         ];
