@@ -528,8 +528,9 @@ fn simulate(
 ) -> Vec<Completion> {
     let lambda = rho / size_dist.mean();
     //let guard_c: f64 = 2.0;
-    let guard_c: f64 = 1.0 + 1.0/(1.0/(1.0 - rho)).ln();
-    let guardrail_multiplier: Option<f64> = Some(10.0);
+    let guard_c: f64 = 1.0 + 1.0 / (1.0 + (1.0 / (1.0 - rho)).ln());
+    //let guardrail_multiplier: Option<f64> = Some(4.0);
+    let guardrail_multiplier: Option<f64> = None;
 
     let mut current_time: f64 = 0.;
     let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
@@ -567,6 +568,19 @@ fn simulate(
                 if queue[0].rem_size < EPSILON {
                     let finished_job = queue.remove(0);
                     completions.push(Completion::from_job(finished_job, current_time));
+                }
+            }
+        }
+        if let Some(guardrail_multiplier_f) = guardrail_multiplier {
+            for (i, queue) in queues.iter().enumerate() {
+                if queue.is_empty() {
+                    for work_in_rank in work_in_ranks.values_mut() {
+                        let min = *work_in_rank
+                            .iter()
+                            .min_by(|a, b| a.partial_cmp(b).unwrap())
+                            .unwrap();
+                        work_in_rank[i] = min;
+                    }
                 }
             }
         }
@@ -764,8 +778,9 @@ fn main() {
     let size = Size::Bimodal(1.0, 1000.0, 0.9995);
     //let size = Size::Bimodal(1.0, 100.0, 0.99);
     //let size = Size::balanced_hyper(1000.0);
+    //let size = Size::Hyper(1.0, 1000.0, 0.9993);
     //let size = Size::Exp(1.0);
-    //let size = Size::Pareto(1.2);
+    //let size = Size::Pareto(2.2);
     println!("{:?}", size);
     println!(
         "k: {}, Mean: {}, C^2: {}",
@@ -774,8 +789,13 @@ fn main() {
         size.variance() / size.mean().powf(2.0)
     );
     let mut to_print = true;
-    let standard_rhos = vec![0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99];
-    let small_rhos = vec![0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26];
+    let standard_rhos = vec![
+        0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98,
+        0.99,
+    ];
+    let small_rhos = vec![
+        0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
+    ];
     for rho in standard_rhos {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
@@ -792,14 +812,14 @@ fn main() {
             Box::new(SITA::new(&size, &vec![0.68])),
             Box::new(SITA::new(&size, &vec![0.7])),
             */
-            //Box::new(LWL::new()),
+            Box::new(LWL::new()),
             Box::new(Random::new(seed)),
             //Box::new(JSQ::new()),
             //Box::new(Cost::new()),
             //Box::new(IMD::new(2.0)),
-            Box::new(RR::new()),
-            Box::new(JIQ::new(seed)),
-            Box::new(JSQ::new()),
+            //Box::new(RR::new()),
+            //Box::new(JIQ::new(seed)),
+            //Box::new(JSQ::new()),
         ];
         if to_print {
             println!(
