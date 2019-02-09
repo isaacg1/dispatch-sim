@@ -621,6 +621,7 @@ fn simulate(
 enum Size {
     Exp(f64),
     Pareto(f64),
+    BoundedPareto(f64, f64),
     Hyper(f64, f64, f64),
     Bimodal(f64, f64, f64),
     Trimodal(f64, f64, f64, f64, f64),
@@ -635,6 +636,14 @@ impl Distribution<f64> for Size {
                 dist.sample(rng)
             }
             &Size::Pareto(alpha) => rng.gen_range::<f64>(0., 1.).powf(-1. / alpha),
+            &Size::BoundedPareto(alpha, bound) => {
+                loop {
+                    let out = rng.gen_range::<f64>(0., 1.).powf(-1. / alpha);
+                    if out <= bound {
+                        return out
+                    }
+                }
+            }
             &Size::Hyper(low, high, low_prob) => {
                 let mean = if rng.gen_range::<f64>(0., 1.) < low_prob {
                     low
@@ -679,6 +688,8 @@ impl Size {
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => {
                 low * low_prob + med * (low_or_med_prob - low_prob) + high * (1.0 - low_or_med_prob)
             }
+            &Size::BoundedPareto(alpha, bound) => 1.0/(1.0 - bound.powf(-alpha))
+                * alpha / (alpha - 1.0) * (1.0-bound.powf(1.0-alpha))
         }
     }
     fn variance(&self) -> f64 {
@@ -698,6 +709,9 @@ impl Size {
                     + high * high * (1.0 - low_or_med_prob)
                     - self.mean().powi(2)
             }
+            &Size::BoundedPareto(alpha, bound) =>1.0/(1.0 - bound.powf(-alpha))
+                * alpha / (alpha - 2.0) * (1.0-bound.powf(2.0-alpha))
+                - self.mean().powi(2)
         }
     }
     fn fraction_below(&self, x: f64) -> f64 {
@@ -710,6 +724,7 @@ impl Size {
             }
             &Size::Bimodal(low, high, low_prob) => unimplemented!(),
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
+            &Size::BoundedPareto(_, _) => unimplemented!()
         }
     }
     fn mean_given_below(&self, x: f64) -> f64 {
@@ -722,6 +737,7 @@ impl Size {
             }
             &Size::Bimodal(low, high, low_prob) => unimplemented!(),
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
+            &Size::BoundedPareto(_, _) => unimplemented!()
         }
     }
     fn descending_busy_period(&self, x: f64, l: f64) -> f64 {
