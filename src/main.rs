@@ -54,12 +54,18 @@ impl Completion {
 }
 
 trait Dispatch: fmt::Display {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize;
+    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>, candidates: &Vec<usize>)
+        -> usize;
 }
 
 impl<S: Dispatch + ?Sized> Dispatch for Box<S> {
-    fn dispatch(&mut self, job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        (**self).dispatch(job_size, queues)
+    fn dispatch(
+        &mut self,
+        job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        (**self).dispatch(job_size, queues, candidates)
     }
 }
 
@@ -77,7 +83,12 @@ impl Random {
 }
 
 impl Dispatch for Random {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
         self.rng.gen_range(0, queues.len())
     }
 }
@@ -98,7 +109,12 @@ impl JSQ {
 }
 
 impl Dispatch for JSQ {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
         queues
             .iter()
             .enumerate()
@@ -111,6 +127,42 @@ impl Dispatch for JSQ {
 impl fmt::Display for JSQ {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "JSQ")
+    }
+}
+
+#[derive(Clone)]
+struct JSQ_d {
+    rng: IsaacRng,
+    d: usize,
+}
+
+impl JSQ_d {
+    fn new(seed: u64, d: usize) -> Self {
+        Self {
+            rng: IsaacRng::new_from_u64(seed),
+            d,
+        }
+    }
+}
+
+impl Dispatch for JSQ_d {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let observed_candidates = rand::sample(&mut self.rng, candidates, self.d);
+        *observed_candidates
+            .into_iter()
+            .min_by_key(|&&c| queues[c].len())
+            .unwrap()
+    }
+}
+
+impl fmt::Display for JSQ_d {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "JSQ_d({})", self.d)
     }
 }
 
@@ -128,10 +180,16 @@ impl JIQ {
 }
 
 impl Dispatch for JIQ {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        queues
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        candidates
             .iter()
-            .position(|q| q.is_empty())
+            .cloned()
+            .find(|&c| queues[c].is_empty())
             .unwrap_or_else(|| self.rng.gen_range(0, queues.len()))
     }
 }
@@ -152,7 +210,12 @@ impl LWL {
 }
 
 impl Dispatch for LWL {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
         queues
             .iter()
             .enumerate()
@@ -168,6 +231,7 @@ impl fmt::Display for LWL {
         write!(f, "LWL")
     }
 }
+/*
 #[derive(Clone)]
 struct LWL_me {}
 
@@ -492,23 +556,32 @@ impl fmt::Display for SITA {
         write!(f, "SITA({:?})", self.cutoffs)
     }
 }
+*/
 
 struct RR {
-    last: usize,
+    dispatches: Vec<usize>,
 }
 
 impl RR {
-    fn new() -> Self {
-        Self { last: 0 }
+    fn new(k: usize) -> Self {
+        Self {
+            dispatches: (0..k).collect(),
+        }
     }
 }
 
 impl Dispatch for RR {
-    fn dispatch(&mut self, _job_size: f64, queues: &Vec<Vec<Job>>) -> usize {
-        assert!(self.last < queues.len());
-        let next = (self.last + 1) % queues.len();
-        self.last = next;
-        next
+    fn dispatch(
+        &mut self,
+        _job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let (i, &dispatch) = self.dispatches.iter().enumerate().find(|(_, d)| candidates.contains(d));
+        TODO: This!
+        self.dispatches.remove(i);
+        self.dispatches.push(dispatch);
+        return dispatch;
     }
 }
 
@@ -528,11 +601,13 @@ fn simulate(
 ) -> Vec<Completion> {
     let lambda = rho / size_dist.mean();
     //let guard_c: f64 = 2.0;
-    let guard_c: f64 = 1.0 + 1.0/(1.0/(1.0 - rho)).ln();
-    let guardrail_multiplier: Option<f64> = Some(10.0);
+    let guard_c: f64 = 1.0 + 1.0 / (1.0 + (1.0 / (1.0 - rho)).ln());
+    let guardrail_multiplier: Option<f64> = Some(4.0);
+    //let guardrail_multiplier: Option<f64> = None;
 
     let mut current_time: f64 = 0.;
     let mut queues: Vec<Vec<Job>> = vec![vec![]; k];
+    let mut set_to_empty: Vec<bool> = vec![false; k];
     let mut completions: Vec<Completion> = vec![];
 
     let arrival_generator = Exp::new(lambda);
@@ -570,34 +645,45 @@ fn simulate(
                 }
             }
         }
+        if let Some(guardrail_multiplier_f) = guardrail_multiplier {
+            for (i, queue) in queues.iter().enumerate() {
+                if !set_to_empty[i] && queue.is_empty() {
+                    for work_in_rank in work_in_ranks.values_mut() {
+                        let min = *work_in_rank
+                            .iter()
+                            .min_by(|a, b| a.partial_cmp(b).unwrap())
+                            .unwrap();
+                        work_in_rank[i] = min;
+                    }
+                    set_to_empty[i] = true;
+                }
+            }
+        }
         if arrival_occured {
             let new_size = size_dist.sample(&mut rng);
-            let i = dispatcher.dispatch(new_size, &queues);
+            let candidates: Vec<usize> = if let Some(guardrail_multiplier_f) = guardrail_multiplier
+            {
+                let rank = new_size.log(guard_c).floor() as i32;
+                let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
+                let min = work_in_rank
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(&b).unwrap())
+                    .unwrap();
+                (0..queues.len())
+                    .filter(|&i| {
+                        work_in_rank[i] - min + new_size
+                            > guardrail_multiplier_f * guard_c.powi(rank + 1)
+                    })
+                    .collect()
+            } else {
+                (0..queues.len()).collect()
+            };
+            assert!(!candidates.is_empty());
+            let i = dispatcher.dispatch(new_size, &queues, &candidates);
             arrival_increment = arrival_generator.sample(&mut rng);
 
-            let rank = new_size.log(guard_c).floor() as i32;
-            let new_i = if let Some(guardrail_multiplier_f) = guardrail_multiplier {
-                let work_in_rank = work_in_ranks.entry(rank).or_insert_with(|| vec![0.0; k]);
-                let (i_min, min) = work_in_rank
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .fold((0, INFINITY), |a, b| if a.1 < b.1 { a } else { b });
-                let reroute = i != i_min
-                    && work_in_rank[i] - min + new_size
-                        > guardrail_multiplier_f * guard_c.powi(rank + 1);
-                let new_i = if reroute { i_min } else { i };
-                work_in_rank[new_i] += new_size;
-                new_i
-            } else {
-                i
-            };
-            queues[new_i].push(Job::new(new_size, current_time));
-
-            if new_i != i {
-                num_bad_dispatches += 1;
-                //println!("{:#?}\nQueue: {}\nSize: {}", work_in_ranks, new_i, new_size);
-            }
+            queues[i].push(Job::new(new_size, current_time));
+            set_to_empty[i] = false;
         }
     }
     //Treat all jobs unfinished at end as immediately completing
@@ -777,11 +863,12 @@ fn main() {
     let k = 10;
 
     let seed = 0;
-    let size = Size::Bimodal(1.0, 1000.0, 0.9995);
+    //let size = Size::Bimodal(1.0, 1000.0, 0.9995);
     //let size = Size::Bimodal(1.0, 100.0, 0.99);
     //let size = Size::balanced_hyper(1000.0);
+    let size = Size::Hyper(1.0, 1000.0, 0.9993);
     //let size = Size::Exp(1.0);
-    //let size = Size::Pareto(1.2);
+    //let size = Size::Pareto(2.2);
     println!("{:?}", size);
     println!(
         "k: {}, Mean: {}, C^2: {}",
@@ -790,32 +877,22 @@ fn main() {
         size.variance() / size.mean().powf(2.0)
     );
     let mut to_print = true;
-    let standard_rhos = vec![0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98, 0.99];
-    let small_rhos = vec![0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26];
+    let standard_rhos = vec![
+        0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98,
+        0.99,
+    ];
+    let small_rhos = vec![
+        0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
+    ];
     for rho in standard_rhos {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
-            /*
-            Box::new(SITA::new(&size, &vec![0.5])),
-            Box::new(SITA::new(&size, &vec![0.52])),
-            Box::new(SITA::new(&size, &vec![0.54])),
-            Box::new(SITA::new(&size, &vec![0.56])),
-            Box::new(SITA::new(&size, &vec![0.58])),
-            Box::new(SITA::new(&size, &vec![0.6])),
-            Box::new(SITA::new(&size, &vec![0.62])),
-            Box::new(SITA::new(&size, &vec![0.64])),
-            Box::new(SITA::new(&size, &vec![0.66])),
-            Box::new(SITA::new(&size, &vec![0.68])),
-            Box::new(SITA::new(&size, &vec![0.7])),
-            */
-            //Box::new(LWL::new()),
+            Box::new(LWL::new()),
             Box::new(Random::new(seed)),
-            //Box::new(JSQ::new()),
-            //Box::new(Cost::new()),
-            //Box::new(IMD::new(2.0)),
-            Box::new(RR::new()),
-            Box::new(JIQ::new(seed)),
             Box::new(JSQ::new()),
+            Box::new(RR::new(k)),
+            Box::new(JIQ::new(seed)),
+            Box::new(JSQ_d::new(seed, 2)),
         ];
         if to_print {
             println!(
