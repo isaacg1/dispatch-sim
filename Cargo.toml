@@ -4,6 +4,6 @@ version = "0.1.0"
 authors = ["Isaac Grosof <igrosof@cmu.edu>"]
 
 [dependencies]
-rand = "0.5.5"
+rand = "0.6.5"
 quadrature = "0.1.2"
 noisy_float = "0.1.8"
