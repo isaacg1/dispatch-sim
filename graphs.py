@@ -189,6 +189,26 @@ plt.close()
 
 import numpy as np
 
+for rho in [6, 9, 15]:
+    rho_name = big_guard[rho][2:4]
+    plt.figure(figsize=(6,4))
+    unguard_rho = [float(f) for f in big_unguard[rho].split(",")][1:]
+    ticks = np.arange(len(unguard_rho))
+    bar_width = 0.35
+    plt.bar(ticks, unguard_rho, bar_width, color="green", label="Unguarded")
+    guard_rho = [float(f) for f in big_guard[rho].split(",")][1:]
+    plt.bar(ticks + bar_width, guard_rho, bar_width, color="purple", label="Guarded")
+
+    plt.legend()
+    plt.ylabel("Mean response time (E[T])")
+    plt.xlabel(r"System load ($\rho$)")
+    plt.xticks(ticks + bar_width, names)
+
+    plt.tight_layout()
+    plt.savefig('many_policies_rho_{}.eps'.format(rho_name))
+    plt.close()
+
+
 plt.figure(figsize=(6, 5))
 new_order = [0, 1, 2, 3, 4, 5]
 sample_rhos=[6,9,11,13, 15]

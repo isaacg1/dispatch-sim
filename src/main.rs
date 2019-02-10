@@ -285,6 +285,8 @@ fn simulate(
 ) -> Vec<Completion> {
     let lambda = rho / size_dist.mean();
     let guard_c: f64 = 1.0 + 1.0 / (1.0 + (1.0 / (1.0 - rho)).ln());
+    //let guard_c: f64 = 1.0 + 1.0 / (0.5 + (1.0 / (1.0 - rho)).log(100.0));
+    //let guard_c = 2.0;
     let guardrail_multiplier = g;
 
     let mut current_time: f64 = 0.;
@@ -425,7 +427,7 @@ impl Distribution<f64> for Size {
             &Size::Pareto(alpha) => rng.gen_range(0., 1.).powf(-1. / alpha),
             &Size::BoundedPareto(alpha, bound) => {
                 loop {
-                    let out = rng.gen_range::<f64>(0., 1.).powf(-1. / alpha);
+                    let out = rng.gen_range(0., 1.).powf(-1. / alpha);
                     if out <= bound {
                         return out
                     }
@@ -561,15 +563,19 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 1e6;
+    let time = 3e5;
     let k = 10;
+    //let g = None;
+    let g = Some(2.0);
 
     let seed = 0;
     //let size = Size::Bimodal(1.0, 1000.0, 0.9995);
-    let size = Size::Hyper(1.0, 100.0, 0.993);
+    //let size = Size::Hyper(1.0, 10000.0, 0.99995);
+    let size = Size::BoundedPareto(1.5, 10.0.powi(6));
     println!("{:?}", size);
     println!(
-        "k: {}, Mean: {}, C^2: {}",
+        "g: {:?}, k: {}, Mean: {}, C^2: {}",
+        g,
         k,
         size.mean(),
         size.variance() / size.mean().powf(2.0)
@@ -577,13 +583,13 @@ fn main() {
     let mut to_print = true;
     let standard_rhos = vec![
         0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98,
-        0.99,
+        0.99, 0.995, 0.9975, 0.999
     ];
     let small_rhos = vec![
         0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
     ];
-    for g in vec![1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
-    for rho in vec![0.7, 0.9] {
+    //for g in vec![1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
+    for rho in standard_rhos {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
             Box::new(LWL::new()),
@@ -604,7 +610,7 @@ fn main() {
             );
             to_print = false;
         }
-        println!("g={}", g);
+        //println!("g={}", g);
 
         for (i, policy) in policies.iter_mut().enumerate() {
             /*
@@ -615,7 +621,7 @@ fn main() {
                 }
             }
             */
-            let completions = simulate(time, rho, &size, policy, k, Some(g), seed);
+            let completions = simulate(time, rho, &size, policy, k, g, seed);
             let mean =
                 completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
             results.push(mean);
@@ -629,7 +635,7 @@ fn main() {
                 .join(","),
         );
     }
-    }
+    //}
     /*
     print_sim_mean(time, rho, &size, &mut SITA::new(&size), k, seed);
     print_sim_mean(time, rho, &size, &mut LWL::new(), k, seed);
