@@ -274,6 +274,25 @@ impl fmt::Display for RR {
     }
 }
 
+struct IMD {}
+impl IMD {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Dispatch for IMD {
+    fn dispatch(&mut self, _: f64, _: &Vec<Vec<Job>>, _: &Vec<usize>) -> usize {
+        0
+    }
+}
+
+impl fmt::Display for IMD {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "IMD")
+    }
+}
+
 fn simulate(
     end_time: f64,
     rho: f64,
@@ -296,6 +315,7 @@ fn simulate(
 
     let arrival_generator = Exp::new(lambda);
     let mut rng = IsaacRng::new_from_u64(seed);
+    let mut rng2 = IsaacRng::new_from_u64(seed);
     let mut arrival_increment = arrival_generator.sample(&mut rng);
 
     let mut work_in_ranks: HashMap<i32, Vec<f64>> = HashMap::new();
@@ -378,7 +398,21 @@ fn simulate(
                 (0..queues.len()).collect()
             };
             assert!(!candidates.is_empty());
-            let i = dispatcher.dispatch(new_size, &queues, &candidates);
+            let i = if dispatcher.to_string() != "IMD".to_string() {
+                dispatcher.dispatch(new_size, &queues, &candidates)
+            } else {
+                let rank = new_size.log(guard_c).floor() as i32;
+                let work_in_rank = &work_in_ranks[&rank];
+                let min =
+                    work_in_rank
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(&b).unwrap())
+                    .unwrap();
+                let i_mins = work_in_rank.iter().enumerate().filter(|&(i, w)| w==min)
+                    .map(|(i, w)| i);
+                let i_min = i_mins.choose(&mut rng2).unwrap();
+                i_min
+            };
             arrival_increment = arrival_generator.sample(&mut rng);
 
             queues[i].push(Job::new(new_size, current_time));
@@ -563,7 +597,7 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 3e5;
+    let time = 3e6;
     let k = 10;
     //let g = None;
     let g = Some(2.0);
@@ -575,7 +609,7 @@ fn main() {
     println!("{:?}", size);
     println!(
         "g: {:?}, k: {}, Mean: {}, C^2: {}",
-        g,
+        "Set further on",
         k,
         size.mean(),
         size.variance() / size.mean().powf(2.0)
@@ -588,8 +622,9 @@ fn main() {
     let small_rhos = vec![
         0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
     ];
-    //for g in vec![1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
-    for rho in standard_rhos {
+    for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
+    println!("g={:?}", g);
+    for rho in vec![0.8, 0.98] {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
             Box::new(LWL::new()),
@@ -610,7 +645,6 @@ fn main() {
             );
             to_print = false;
         }
-        //println!("g={}", g);
 
         for (i, policy) in policies.iter_mut().enumerate() {
             /*
@@ -635,7 +669,7 @@ fn main() {
                 .join(","),
         );
     }
-    //}
+    }
     /*
     print_sim_mean(time, rho, &size, &mut SITA::new(&size), k, seed);
     print_sim_mean(time, rho, &size, &mut LWL::new(), k, seed);
