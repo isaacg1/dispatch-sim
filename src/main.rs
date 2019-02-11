@@ -628,7 +628,7 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 1e5;
+    let time = 3e6;
     let k = 10;
     //let g = None;
     let g = Some(2.0);
