@@ -293,6 +293,37 @@ impl fmt::Display for IMD {
     }
 }
 
+struct SITA {
+    thresholds: Vec<f64>,
+}
+
+impl SITA {
+    fn new(thresholds: Vec<f64>) -> Self {
+        Self {
+            thresholds,
+        }
+    }
+}
+impl Dispatch for SITA {
+    fn dispatch(
+        &mut self,
+        job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let preferred = self.thresholds.iter().position(|&t| t > job_size)
+            .unwrap_or(queues.len());
+        let mut mut_candidates = candidates.clone();
+        mut_candidates.sort_by_key(|&c| (c as isize - preferred as isize).abs());
+        mut_candidates[0]
+    }
+}
+impl fmt::Display for SITA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SITA")
+    }
+}
+
 fn simulate(
     end_time: f64,
     rho: f64,
@@ -597,7 +628,7 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 3e6;
+    let time = 1e5;
     let k = 10;
     //let g = None;
     let g = Some(2.0);
@@ -627,12 +658,15 @@ fn main() {
     for rho in vec![0.8, 0.98] {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
+            /*
             Box::new(LWL::new()),
             Box::new(Random::new(seed)),
             Box::new(JSQ::new()),
             Box::new(RR::new(k)),
             Box::new(JIQ::new(seed)),
             Box::new(JSQ_d::new(seed, 2)),
+            */
+            Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224])),
         ];
         if to_print {
             println!(
