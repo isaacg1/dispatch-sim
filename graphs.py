@@ -304,7 +304,7 @@ bar_width = 0.2
 order = [5, 0, 1, 3, 4, 2]
 ordered_names = [names[o] for o in order]
 plot_names = ["bp", "bm"]
-maxes = [[85, 250], [45, 60]]
+maxes = [[85, 200], [45, 60]]
 for (plot_index, gs) in enumerate(gses):
     for (i, rho_name) in enumerate(rho_names):
         plt.figure(figsize=(6, 4.5))
