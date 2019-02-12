@@ -324,6 +324,46 @@ impl fmt::Display for SITA {
     }
 }
 
+struct Split {
+    rng: IsaacRng,
+    split_point: f64,
+    low_weight: f64,
+}
+
+impl Split {
+    fn new(seed: u64, split_point: f64, low_weight: f64) -> Self {
+        Self {
+            rng: IsaacRng::new_from_u64(seed),
+            split_point,
+            low_weight,
+        }
+    }
+}
+
+impl Dispatch for Split {
+    fn dispatch(
+        &mut self,
+        job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let float_preferred = if job_size < self.split_point {
+            self.rng.gen_range(0., self.low_weight)
+        } else {
+            self.rng.gen_range(self.low_weight, 1.0)
+        };
+        let preferred = (float_preferred * queues.len() as f64).floor() as usize;
+        let mut mut_candidates = candidates.clone();
+        mut_candidates.sort_by_key(|&c| (c as isize - preferred as isize).abs());
+        mut_candidates[0]
+    }
+}
+impl fmt::Display for Split {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Split")
+    }
+}
+
 fn simulate(
     end_time: f64,
     rho: f64,
@@ -634,9 +674,9 @@ fn main() {
     let g = Some(2.0);
 
     let seed = 0;
-    //let size = Size::Bimodal(1.0, 1000.0, 0.9995);
+    let size = Size::Bimodal(1.0, 1000.0, 0.9995);
     //let size = Size::Hyper(1.0, 10000.0, 0.99995);
-    let size = Size::BoundedPareto(1.5, 10.0.powi(6));
+    //let size = Size::BoundedPareto(1.5, 10.0.powi(6));
     println!("{:?}", size);
     println!(
         "g: {:?}, k: {}, Mean: {}, C^2: {}",
@@ -654,19 +694,18 @@ fn main() {
         0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
     ];
     for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
-    println!("g={:?}", g);
+    //println!("g={:?}", g);
     for rho in vec![0.8, 0.98] {
         let mut results = vec![rho];
         let mut policies: Vec<Box<Dispatch>> = vec![
-            /*
             Box::new(LWL::new()),
             Box::new(Random::new(seed)),
             Box::new(JSQ::new()),
             Box::new(RR::new(k)),
-            Box::new(JIQ::new(seed)),
+            //Box::new(JIQ::new(seed)),
             Box::new(JSQ_d::new(seed, 2)),
-            */
-            Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224])),
+            //Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224])),
+            Box::new(Split::new(seed, 10.0, 0.9995/1.4995)),
         ];
         if to_print {
             println!(
@@ -681,14 +720,6 @@ fn main() {
         }
 
         for (i, policy) in policies.iter_mut().enumerate() {
-            /*
-            if i < 11 {
-                if (0.5 + i as f64 * 0.02) * rho * k as f64 > 1.0 {
-                    results.push(INFINITY);
-                    continue;
-                }
-            }
-            */
             let completions = simulate(time, rho, &size, policy, k, g, seed);
             let mean =
                 completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
@@ -704,44 +735,4 @@ fn main() {
         );
     }
     }
-    /*
-    print_sim_mean(time, rho, &size, &mut SITA::new(&size), k, seed);
-    print_sim_mean(time, rho, &size, &mut LWL::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut Random::new(seed), k, seed);
-    print_sim_mean(time, rho, &size, &mut JSQ::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut Cost::new(), k, seed);
-    */
-    /*
-    print_sim_mean(time, rho, &size, &mut Random::new(seed), 1, seed);
-    print_sim_mean(time, rho, &size, &mut JIQ::new(seed), k, seed);
-    print_sim_mean(time, rho, &size, &mut LWL_me::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut LWL_2me::new(), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMDbelow::new(8.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMDbelow::new(4.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMDbelow::new(2.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(8.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(4.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(2.0), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(1.5), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(1.2), k, seed);
-    print_sim_mean(time, rho, &size, &mut IMD::new(1.1), k, seed);
-    print_sim_mean(
-        time,
-        rho,
-        &size,
-        &mut Cost2::new(&size, rho / size.mean()),
-        k,
-        seed,
-    );
-    /*
-    print_sim_mean(
-        time,
-        rho,
-        &size,
-        &mut Cost3::new(&size, rho / size.mean()),
-        k,
-        seed,
-    );
-    */
-    */
 }

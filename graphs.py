@@ -1,6 +1,9 @@
-import matplotlib
-matplotlib.use('agg')
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except:
+    import matplotlib
+    matplotlib.use('agg')
+    import matplotlib.pyplot as plt
 
 """
 time=1e6
@@ -270,51 +273,39 @@ plt.tight_layout()
 plt.savefig("gs.eps")
 plt.close()
 
-names="LWL,Random,JSQ,RR,JIQ,JSQ-2,SITA-E".split(",")
-g_none = """
-0.800000,36.033476,61.172848,34.570300,50.316724,35.474253,42.699921,79.394615
-0.980000,98.986495,124.488738,53.196507,103.078259,69.189879,65.896013,559.743780
+names="LWL,Random,JSQ,RR,JSQ-2,SITA-E".split(",")
+bp = """
+0.800000,36.033476,61.172848,34.570300,50.316724,42.699921,79.394615
+0.980000,98.986495,124.488738,53.196507,103.078259,65.896013,559.743780
+0.800000,34.114659,43.390677,34.645975,41.693679,38.554473,44.571183
+0.980000,63.885670,72.250273,57.728419,68.669730,62.705196,77.550973
+0.800000,34.561664,48.286602,34.728220,45.201511,40.544387,53.416495
+0.980000,67.583790,82.739594,55.679617,75.928165,64.079265,109.639323
+0.800000,35.102138,52.443527,34.723908,49.615154,41.558826,63.079127
+0.980000,71.242538,91.453511,54.953986,82.166577,64.579479,168.525854
 """.strip().split("\n")
-g_1 = """
-0.800000,34.114659,43.390677,34.645975,41.693679,35.285069,38.554473,44.571183
-0.980000,63.885670,72.250273,57.728419,68.669730,65.805717,62.705196,77.550973
-""".strip().split("\n")
-g_2 = """
-0.800000,34.561664,48.286602,34.728220,45.201511,35.615254,40.544387,53.416495
-0.980000,67.583790,82.739594,55.679617,75.928165,71.049894,64.079265,109.639323
-""".strip().split("\n")
-
-g_4 = """
-0.800000,35.102138,52.443527,34.723908,49.615154,35.667584,41.558826,63.079127
-0.980000,71.242538,91.453511,54.953986,82.166577,73.967456,64.579479,168.525854
-""".strip().split("\n")
-bm_none = """
-0.800000,166.412902,30.676582,18.345826,23.013846,18.762844,21.926924,0.0
-0.980000,694.560913,45.136340,22.743582,30.612294,26.822985,27.430760,0.0
-""".strip().split("\n")
-bm_1 = """
-0.800000,17.907429,20.020578,18.210290,20.322768,18.407614,19.132735,0.0
-0.980000,22.993593,25.039468,22.998106,24.911693,23.859218,24.193190,0.0
-""".strip().split("\n")
-bm_2 = """
-0.800000,17.887406,21.235833,18.100749,22.309873,18.374147,20.014120,0.0
-0.980000,23.018611,26.196788,22.715212,26.594877,24.110479,24.743670,0.0
-""".strip().split("\n")
-bm_4 = """
-0.800000,19.325734,24.484031,18.662949,22.290156,18.744602,21.170527,0.0
-0.980000,23.999106,29.540553,23.664641,26.717409,25.404730,26.217874,0.0
+bm = """
+0.800000,166.412902,30.676582,18.345826,23.013846,21.926924,40.741401
+0.980000,694.560913,45.136340,22.743582,30.612294,27.430760,217.353353
+0.800000,17.907429,20.020578,18.210290,20.322768,19.132735,19.228678
+0.980000,22.993593,25.039468,22.998106,24.911693,24.193190,23.703974
+0.800000,17.887406,21.235833,18.100749,22.309873,20.014120,21.396897
+0.980000,23.018611,26.196788,22.715212,26.594877,24.743670,25.277247
+0.800000,19.325734,24.484031,18.662949,22.290156,21.170527,29.723207
+0.980000,23.999106,29.540553,23.664641,26.717409,26.217874,30.722497
 """.strip().split("\n")
 
 
-bp_gs = [g_1, g_2, g_4, g_none]
-bm_gs = [bm_1, bm_2, bm_4, bm_none]
+gses = [[gs[2:4], gs[4:6], gs[6:8], gs[0:2]] for gs in [bp, bm]]
 g_names = ["g=1", "g=2", "g=4","No guardrails"]
 g_colors = ["orange", "green", "purple", "black"]
 rho_names = ["80", "98"]
 bar_width = 0.2
-order = [6, 1, 3, 0, 5, 2]
+order = [5, 0, 1, 3, 4, 2]
 ordered_names = [names[o] for o in order]
-for (plot_name, gs) in [("bp", bp_gs), ("bm", bm_gs)]:
+plot_names = ["bp", "bm"]
+maxes = [[85, 250], [45, 60]]
+for (plot_index, gs) in enumerate(gses):
     for (i, rho_name) in enumerate(rho_names):
         plt.figure(figsize=(6, 4.5))
         for j in range(len(gs)):
@@ -322,23 +313,20 @@ for (plot_name, gs) in [("bp", bp_gs), ("bm", bm_gs)]:
             times = g[i].split(",")
             ordered_times = [float(times[o+1]) for o in order]
             ticks = np.arange(len(order))
-            plt.bar(ticks + bar_width * j, ordered_times, bar_width, color=g_colors[j],
+            ax = plt.bar(ticks + bar_width * j, ordered_times, bar_width, color=g_colors[j],
                     label = g_names[j])
-        if plot_name == "bp":
-            if rho_name == "98":
-                plt.ylim(ymax=250)
-            else:
-                plt.ylim(ymax=85)
-        else:
-            if rho_name == "98":
-                plt.ylim(ymax=60)
-            else:
-                plt.ylim(ymax=40)
+            rects = ax.patches
+            for rect_index, rect in enumerate(rects):
+                height = rect.get_height()
+                if height > maxes[plot_index][i]:
+                    plt.text(rect.get_x() + rect.get_width() * 1.2, maxes[plot_index][i]*0.93,
+                            "{:.1f}".format(ordered_times[rect_index]))
+        plt.ylim(ymax=maxes[plot_index][i])
         plt.legend()
         plt.ylabel("Mean response time (E[T])")
         plt.xlabel("Dispatching policy")
-        plt.xticks(ticks + len(order)/2 * bar_width, ordered_names)
+        plt.xticks(ticks + len(gs)/2 * bar_width, ordered_names)
 
         plt.tight_layout()
-        plt.savefig('{}-many-pol-g-{}.eps'.format(plot_name, rho_names[i]))
+        plt.savefig('{}-many-pol-g-{}.eps'.format(plot_names[plot_index], rho_names[i]))
         plt.close()
