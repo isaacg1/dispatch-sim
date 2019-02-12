@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 """
@@ -286,33 +288,57 @@ g_4 = """
 0.800000,35.102138,52.443527,34.723908,49.615154,35.667584,41.558826,63.079127
 0.980000,71.242538,91.453511,54.953986,82.166577,73.967456,64.579479,168.525854
 """.strip().split("\n")
+bm_none = """
+0.800000,166.412902,30.676582,18.345826,23.013846,18.762844,21.926924,0.0
+0.980000,694.560913,45.136340,22.743582,30.612294,26.822985,27.430760,0.0
+""".strip().split("\n")
+bm_1 = """
+0.800000,17.907429,20.020578,18.210290,20.322768,18.407614,19.132735,0.0
+0.980000,22.993593,25.039468,22.998106,24.911693,23.859218,24.193190,0.0
+""".strip().split("\n")
+bm_2 = """
+0.800000,17.887406,21.235833,18.100749,22.309873,18.374147,20.014120,0.0
+0.980000,23.018611,26.196788,22.715212,26.594877,24.110479,24.743670,0.0
+""".strip().split("\n")
+bm_4 = """
+0.800000,19.325734,24.484031,18.662949,22.290156,18.744602,21.170527,0.0
+0.980000,23.999106,29.540553,23.664641,26.717409,25.404730,26.217874,0.0
+""".strip().split("\n")
 
 
-gs = [g_1, g_2, g_4, g_none]
+bp_gs = [g_1, g_2, g_4, g_none]
+bm_gs = [bm_1, bm_2, bm_4, bm_none]
 g_names = ["g=1", "g=2", "g=4","No guardrails"]
 g_colors = ["orange", "green", "purple", "black"]
 rho_names = ["80", "98"]
 bar_width = 0.2
 order = [6, 1, 3, 0, 5, 2]
 ordered_names = [names[o] for o in order]
-ticks = np.arange(len(order))
-for (i, rho_name) in enumerate(rho_names):
-    plt.figure(figsize=(6, 4.5))
-    for j in range(len(gs)):
-        g = gs[j]
-        times = g[i]
-        ordered_times = [float(times.split(",")[o+1]) for o in order]
-        plt.bar(ticks + bar_width * j, ordered_times, bar_width, color=g_colors[j],
-                label = g_names[j])
-    if rho_name == "98":
-        plt.ylim(ymax=250)
-    else:
-        plt.ylim(ymax=85)
-    plt.legend()
-    plt.ylabel("Mean response time (E[T])")
-    plt.xlabel("Dispatching policy")
-    plt.xticks(ticks + len(new_order)/2 * bar_width, ordered_names)
+for (plot_name, gs) in [("bp", bp_gs), ("bm", bm_gs)]:
+    for (i, rho_name) in enumerate(rho_names):
+        plt.figure(figsize=(6, 4.5))
+        for j in range(len(gs)):
+            g = gs[j]
+            times = g[i].split(",")
+            ordered_times = [float(times[o+1]) for o in order]
+            ticks = np.arange(len(order))
+            plt.bar(ticks + bar_width * j, ordered_times, bar_width, color=g_colors[j],
+                    label = g_names[j])
+        if plot_name == "bp":
+            if rho_name == "98":
+                plt.ylim(ymax=250)
+            else:
+                plt.ylim(ymax=85)
+        else:
+            if rho_name == "98":
+                plt.ylim(ymax=60)
+            else:
+                plt.ylim(ymax=40)
+        plt.legend()
+        plt.ylabel("Mean response time (E[T])")
+        plt.xlabel("Dispatching policy")
+        plt.xticks(ticks + len(order)/2 * bar_width, ordered_names)
 
-    plt.tight_layout()
-    plt.savefig('many-pol-g-{}.eps'.format(rho_names[i]))
-    plt.close()
+        plt.tight_layout()
+        plt.savefig('{}-many-pol-g-{}.eps'.format(plot_name, rho_names[i]))
+        plt.close()
