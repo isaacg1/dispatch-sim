@@ -1,8 +1,8 @@
 #![allow(warnings)]
 extern crate rand;
+use rand::distributions::Exp;
 use rand::prelude::*;
 use rand::prng::isaac::IsaacRng;
-use rand::distributions::Exp;
 
 extern crate quadrature;
 use quadrature::integrate;
@@ -299,9 +299,7 @@ struct SITA {
 
 impl SITA {
     fn new(thresholds: Vec<f64>) -> Self {
-        Self {
-            thresholds,
-        }
+        Self { thresholds }
     }
 }
 impl Dispatch for SITA {
@@ -311,7 +309,10 @@ impl Dispatch for SITA {
         queues: &Vec<Vec<Job>>,
         candidates: &Vec<usize>,
     ) -> usize {
-        let preferred = self.thresholds.iter().position(|&t| t > job_size)
+        let preferred = self
+            .thresholds
+            .iter()
+            .position(|&t| t > job_size)
             .unwrap_or(queues.len());
         let mut mut_candidates = candidates.clone();
         mut_candidates.sort_by_key(|&c| (c as isize - preferred as isize).abs());
@@ -474,12 +475,14 @@ fn simulate(
             } else {
                 let rank = new_size.log(guard_c).floor() as i32;
                 let work_in_rank = &work_in_ranks[&rank];
-                let min =
-                    work_in_rank
+                let min = work_in_rank
                     .iter()
                     .min_by(|a, b| a.partial_cmp(&b).unwrap())
                     .unwrap();
-                let i_mins = work_in_rank.iter().enumerate().filter(|&(i, w)| w==min)
+                let i_mins = work_in_rank
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, w)| w == min)
                     .map(|(i, w)| i);
                 let i_min = i_mins.choose(&mut rng2).unwrap();
                 i_min
@@ -530,14 +533,12 @@ impl Distribution<f64> for Size {
                 dist.sample(rng)
             }
             &Size::Pareto(alpha) => rng.gen_range(0., 1.).powf(-1. / alpha),
-            &Size::BoundedPareto(alpha, bound) => {
-                loop {
-                    let out = rng.gen_range(0., 1.).powf(-1. / alpha);
-                    if out <= bound {
-                        return out
-                    }
+            &Size::BoundedPareto(alpha, bound) => loop {
+                let out = rng.gen_range(0., 1.).powf(-1. / alpha);
+                if out <= bound {
+                    return out;
                 }
-            }
+            },
             &Size::Hyper(low, high, low_prob) => {
                 let mean = if rng.gen_range(0., 1.) < low_prob {
                     low
@@ -582,8 +583,10 @@ impl Size {
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => {
                 low * low_prob + med * (low_or_med_prob - low_prob) + high * (1.0 - low_or_med_prob)
             }
-            &Size::BoundedPareto(alpha, bound) => 1.0/(1.0 - bound.powf(-alpha))
-                * alpha / (alpha - 1.0) * (1.0-bound.powf(1.0-alpha))
+            &Size::BoundedPareto(alpha, bound) => {
+                1.0 / (1.0 - bound.powf(-alpha)) * alpha / (alpha - 1.0)
+                    * (1.0 - bound.powf(1.0 - alpha))
+            }
         }
     }
     fn variance(&self) -> f64 {
@@ -603,9 +606,11 @@ impl Size {
                     + high * high * (1.0 - low_or_med_prob)
                     - self.mean().powi(2)
             }
-            &Size::BoundedPareto(alpha, bound) =>1.0/(1.0 - bound.powf(-alpha))
-                * alpha / (alpha - 2.0) * (1.0-bound.powf(2.0-alpha))
-                - self.mean().powi(2)
+            &Size::BoundedPareto(alpha, bound) => {
+                1.0 / (1.0 - bound.powf(-alpha)) * alpha / (alpha - 2.0)
+                    * (1.0 - bound.powf(2.0 - alpha))
+                    - self.mean().powi(2)
+            }
         }
     }
     fn fraction_below(&self, x: f64) -> f64 {
@@ -618,7 +623,7 @@ impl Size {
             }
             &Size::Bimodal(low, high, low_prob) => unimplemented!(),
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
-            &Size::BoundedPareto(_, _) => unimplemented!()
+            &Size::BoundedPareto(_, _) => unimplemented!(),
         }
     }
     fn mean_given_below(&self, x: f64) -> f64 {
@@ -631,7 +636,7 @@ impl Size {
             }
             &Size::Bimodal(low, high, low_prob) => unimplemented!(),
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
-            &Size::BoundedPareto(_, _) => unimplemented!()
+            &Size::BoundedPareto(_, _) => unimplemented!(),
         }
     }
     fn descending_busy_period(&self, x: f64, l: f64) -> f64 {
@@ -673,66 +678,69 @@ fn main() {
     //let g = None;
     let g = Some(2.0);
 
-    let seed = 0;
-    let size = Size::Bimodal(1.0, 1000.0, 0.9995);
-    //let size = Size::Hyper(1.0, 10000.0, 0.99995);
-    //let size = Size::BoundedPareto(1.5, 10.0.powi(6));
-    println!("{:?}", size);
-    println!(
-        "g: {:?}, k: {}, Mean: {}, C^2: {}",
-        "Set further on",
-        k,
-        size.mean(),
-        size.variance() / size.mean().powf(2.0)
-    );
-    let mut to_print = true;
-    let standard_rhos = vec![
-        0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97, 0.98,
-        0.99, 0.995, 0.9975, 0.999
-    ];
-    let small_rhos = vec![
-        0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
-    ];
-    for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
-    //println!("g={:?}", g);
-    for rho in vec![0.8, 0.98] {
-        let mut results = vec![rho];
-        let mut policies: Vec<Box<Dispatch>> = vec![
-            Box::new(LWL::new()),
-            Box::new(Random::new(seed)),
-            Box::new(JSQ::new()),
-            Box::new(RR::new(k)),
-            //Box::new(JIQ::new(seed)),
-            Box::new(JSQ_d::new(seed, 2)),
-            //Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224])),
-            Box::new(Split::new(seed, 10.0, 0.9995/1.4995)),
-        ];
-        if to_print {
+    for seed in 0..10 {
+        for size in vec![
+            Size::Bimodal(1.0, 1000.0, 0.9995),
+            Size::BoundedPareto(1.5, 10.0.powi(6)),
+        ] {
+            println!("{:?} {}", size, seed);
             println!(
-                ",{}",
-                policies
-                    .iter()
-                    .map(|p| format!("{}", p))
-                    .collect::<Vec<String>>()
-                    .join(",")
+                "g: {:?}, k: {}, Mean: {}, C^2: {}",
+                "Set further on",
+                k,
+                size.mean(),
+                size.variance() / size.mean().powf(2.0)
             );
-            to_print = false;
-        }
+            let mut to_print = true;
+            let standard_rhos = vec![
+                0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97,
+                0.98, 0.99, 0.995, 0.9975, 0.999,
+            ];
+            let small_rhos = vec![
+                0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
+            ];
+            for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
+                //println!("g={:?}", g);
+                for rho in vec![0.8, 0.98] {
+                    let mut results = vec![rho];
+                    let mut policies: Vec<Box<Dispatch>> = vec![
+                        Box::new(LWL::new()),
+                        Box::new(Random::new(seed)),
+                        Box::new(JSQ::new()),
+                        Box::new(RR::new(k)),
+                        //Box::new(JIQ::new(seed)),
+                        Box::new(JSQ_d::new(seed, 2)),
+                        //Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224])),
+                        Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995)),
+                    ];
+                    if to_print {
+                        println!(
+                            ",{}",
+                            policies
+                                .iter()
+                                .map(|p| format!("{}", p))
+                                .collect::<Vec<String>>()
+                                .join(",")
+                        );
+                        to_print = false;
+                    }
 
-        for (i, policy) in policies.iter_mut().enumerate() {
-            let completions = simulate(time, rho, &size, policy, k, g, seed);
-            let mean =
-                completions.iter().map(|c| c.response_time).sum::<f64>() / completions.len() as f64;
-            results.push(mean);
+                    for (i, policy) in policies.iter_mut().enumerate() {
+                        let completions = simulate(time, rho, &size, policy, k, g, seed);
+                        let mean = completions.iter().map(|c| c.response_time).sum::<f64>()
+                            / completions.len() as f64;
+                        results.push(mean);
+                    }
+                    println!(
+                        "{}",
+                        results
+                            .iter()
+                            .map(|p| format!("{:.6}", p))
+                            .collect::<Vec<String>>()
+                            .join(","),
+                    );
+                }
+            }
         }
-        println!(
-            "{}",
-            results
-                .iter()
-                .map(|p| format!("{:.6}", p))
-                .collect::<Vec<String>>()
-                .join(","),
-        );
-    }
     }
 }
