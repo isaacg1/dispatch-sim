@@ -103,8 +103,8 @@ guard_rhos, guard_lwl, guard_random =\
 plt.figure(figsize=(5, 3.25))
 plt.plot(fcfs_random_rhos, fcfs_random, label='Random/FCFS', linewidth=4, color='orange')
 plt.plot(fcfs_lwl_rhos, fcfs_lwl, label='LWL/FCFS', linewidth=4, color='cyan')
-plt.plot(srpt_rhos, srpt_random, label='Random/SRPT', linewidth=4, color='red')
 plt.plot(srpt_rhos, srpt_lwl, label='LWL/SRPT', linewidth=4, color='blue')
+plt.plot(srpt_rhos, srpt_random, label='Random/SRPT', linewidth=4, color='red')
 
 plt.ylim(ymax=500)
 
