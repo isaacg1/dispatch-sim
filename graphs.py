@@ -101,10 +101,10 @@ guard_rhos, guard_lwl, guard_random =\
     [[float(line.split(',')[i]) for line in guard.split()] for i in range(3)]
 
 plt.figure(figsize=(5, 3.25))
-plt.plot(fcfs_random_rhos, fcfs_random, label='Random/FCFS', linewidth=4, color='orange')
-plt.plot(fcfs_lwl_rhos, fcfs_lwl, label='LWL/FCFS', linewidth=4, color='cyan')
-plt.plot(srpt_rhos, srpt_lwl, label='LWL/SRPT', linewidth=4, color='blue')
-plt.plot(srpt_rhos, srpt_random, label='Random/SRPT', linewidth=4, color='red')
+plt.plot(fcfs_random_rhos, fcfs_random, 'v-', label='Random/FCFS', linewidth=4, color='orange')
+plt.plot(fcfs_lwl_rhos, fcfs_lwl, 'd-', label='LWL/FCFS', linewidth=4, color='cyan')
+plt.plot(srpt_rhos, srpt_lwl, 's-', label='LWL/SRPT', linewidth=4, color='blue')
+plt.plot(srpt_rhos, srpt_random, '^-', label='Random/SRPT', linewidth=4, color='red')
 
 plt.ylim(ymax=500)
 
@@ -117,10 +117,10 @@ plt.savefig('srpt-vs-fcfs.eps', format='eps')
 plt.close()
 
 plt.figure(figsize=(5, 3.25))
-plt.plot(srpt_rhos, srpt_random, label='Random/SRPT', linewidth=4, color='red')
-plt.plot(srpt_rhos, srpt_lwl, label='LWL/SRPT', linewidth=4, color='blue')
-plt.plot(guard_rhos, guard_random, label='G-Random/SRPT', linewidth=4, color='red', linestyle='dashed')
-plt.plot(guard_rhos, guard_lwl, label='G-LWL/SRPT', linewidth=4, color='blue', linestyle='dashed')
+plt.plot(srpt_rhos, srpt_lwl, 's-', label='LWL/SRPT', linewidth=4, color='blue')
+plt.plot(srpt_rhos, srpt_random, '^-', label='Random/SRPT', linewidth=4, color='red')
+plt.plot(guard_rhos, guard_random, '^', label='G-Random/SRPT', linewidth=4, color='red', linestyle='dashed')
+plt.plot(guard_rhos, guard_lwl, 's', label='G-LWL/SRPT', linewidth=4, color='blue', linestyle='dashed')
 
 plt.ylim(ymax=100)
 
@@ -196,7 +196,7 @@ plt.ylabel("Mean response time (E[T])")
 plt.xlabel(r"System load ($\rho$)")
 
 plt.tight_layout()
-plt.savefig('many-policies.eps')
+#plt.savefig('many-policies.eps')
 
 plt.close()
 
@@ -218,7 +218,7 @@ for rho in [6, 9, 15]:
     plt.xticks(ticks + bar_width, names)
 
     plt.tight_layout()
-    plt.savefig('many_policies_rho_{}.eps'.format(rho_name))
+#    plt.savefig('many_policies_rho_{}.eps'.format(rho_name))
     plt.close()
 
 
@@ -241,7 +241,7 @@ plt.xlabel(r"System load ($\rho$)")
 plt.xticks(ticks + len(new_order)/2 * bar_width, new_rhos)
 
 plt.tight_layout()
-plt.savefig('many-bar.eps')
+#plt.savefig('many-bar.eps')
 
 plt.close()
 
@@ -270,7 +270,7 @@ plt.legend()
 plt.xlabel("g")
 plt.ylabel("Mean response time (E[T])")
 plt.tight_layout()
-plt.savefig("gs.eps")
+#plt.savefig("gs.eps")
 plt.close()
 
 names="LWL,Random,JSQ,RR,JSQ-2,SITA-E".split(",")

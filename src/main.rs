@@ -676,8 +676,9 @@ fn main() {
     let time = 3e6;
     let k = 10;
     //let g = None;
-    let g = Some(2.0);
+    //let g = Some(2.0);
 
+    println!("time={}", time);
     for seed in 0..10 {
         for size in vec![
             Size::Bimodal(1.0, 1000.0, 0.9995),
@@ -700,7 +701,7 @@ fn main() {
                 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
             ];
             for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
-                //println!("g={:?}", g);
+                println!("g={:?}", g);
                 for rho in vec![0.8, 0.98] {
                     let mut results = vec![rho];
                     let mut policies: Vec<Box<Dispatch>> = vec![
@@ -710,8 +711,11 @@ fn main() {
                         Box::new(RR::new(k)),
                         //Box::new(JIQ::new(seed)),
                         Box::new(JSQ_d::new(seed, 2)),
-                        //Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224])),
-                        Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995)),
+                        if let Size::BoundedPareto(_, _) = size {
+                            Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224]))
+                        } else {
+                            Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995))
+                        },
                     ];
                     if to_print {
                         println!(
