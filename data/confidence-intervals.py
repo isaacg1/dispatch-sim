@@ -26,7 +26,7 @@ ordered_names = [names[o] for o in order]
 maxes = [[55, 150], [85, 200]]
 bar_width = 0.2
 g_names = ["g=1", "g=2", "g=4","No guardrails"]
-g_colors = ["orange", "green", "purple", "0.3"]
+g_colors = ["orange", "green", "purple", "0.5"]
 rho_names = ["80", "98"]
 plot_names = ["bm", "bp"]
 for i_s, s in enumerate(data):
