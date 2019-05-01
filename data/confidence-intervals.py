@@ -60,6 +60,8 @@ for i_s, s in enumerate(data):
                     plt.text(rect.get_x() + rect.get_width() * 1.2,
                             maxes[i_s][i_rho] * 0.93,
                             "{:.1f}".format(ordered_means[rect_index]))
+            if i_g % 3 == 0:
+                print(ordered_means[2:4], "{}, rho={}, s={}".format(g_names[i_g], rho_names[i_rho], plot_names[i_s]))
         plt.ylim(ymax=maxes[i_s][i_rho])
         plt.legend()
         plt.ylabel("Mean response time (E[T])")
