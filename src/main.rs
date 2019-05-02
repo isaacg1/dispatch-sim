@@ -365,6 +365,146 @@ impl fmt::Display for Split {
     }
 }
 
+struct FPI {
+    size_dist: Size,
+    lambda: f64,
+}
+
+impl FPI {
+    fn new(size_dist: Size, rho: f64) -> Self {
+        Self {
+            size_dist,
+            lambda: rho / size_dist.mean(),
+        }
+    }
+    fn custom_integral(&self, size: f64) -> f64 {
+        match self.size_dist {
+            Size::BoundedPareto(1.5, bound) => {
+                /* (1/(9 (1 - 1/b^(3/2)) b^(
+                 *  9/2) lambda^2))(-1 + b^(
+                 *    3/2))^2 (-((3 b^(3/2) lambda (1 + b^(3/2) (-1 + 3 lambda)))/(
+                 *     b^(3/2) (3 lambda (-1 + Sqrt[t]) - Sqrt[t]) + Sqrt[t])) - (
+                 *    3 b^(3/2) lambda)/Sqrt[t] -
+                 *    2 (1 + b^(3/2) (-1 + 3 lambda)) Log[
+                 *      b^(3/2) (3 lambda (-1 + Sqrt[t]) - Sqrt[t]) + Sqrt[t]] + (1 +
+                 *       b^(3/2) (-1 + 3 lambda)) Log[t])
+                 */
+                if size > bound {
+                    return self.custom_integral(bound);
+                }
+                let alpha = 1.5;
+                let num1 = (bound.powf(alpha) - 1.0).powi(2);
+                let bound_alpha = bound * bound.sqrt();
+                let root_size = size.sqrt();
+
+                let denom1 =
+                    9.0 * (1.0 - 1.0 / bound_alpha) * bound_alpha.powi(3) * self.lambda.powi(2);
+                let subterm = 1.0 + bound_alpha * (3.0 * self.lambda - 1.0);
+                let term1_num = 3.0 * bound_alpha * self.lambda * subterm;
+                let term1_denom =
+                    bound_alpha * (3.0 * self.lambda * (root_size - 1.0) - root_size) + root_size;
+                let term2 = 3.0 * bound_alpha * self.lambda / root_size;
+                let term3 = 2.0 * subterm * (-term1_denom).ln();
+                let term4 = subterm * size.ln();
+                (num1 / denom1) * (-(term1_num / term1_denom) - term2 - term3 + term4)
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Dispatch for FPI {
+    fn dispatch(
+        &mut self,
+        job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let alternative = *candidates
+            .iter()
+            .min_by_key(|i| {
+                n64({
+                    let mut queue = queues[**i].clone();
+                    queue.sort_by_key(|j| n64(j.rem_size));
+                    let mut delta = 0.0;
+                    let mut previous_threshold = job_size;
+                    let mut work_below = 0.0;
+                    for old_job in queue {
+                        if old_job.rem_size <= job_size {
+                            delta += old_job.rem_size
+                                / (1.0 - self.lambda * self.size_dist.mean_given_below(job_size));
+                        } else {
+                            delta += job_size
+                                / (1.0
+                                    - self.lambda
+                                        * self.size_dist.mean_given_below(old_job.rem_size));
+                        }
+                        if old_job.rem_size >= job_size {
+                            assert!(old_job.rem_size >= previous_threshold);
+                            let custom_delta = self.custom_integral(old_job.rem_size)
+                                - self.custom_integral(previous_threshold);
+                            delta += custom_delta * (work_below + job_size).powi(2) / 2.0
+                                - custom_delta * work_below.powi(2) / 2.0;
+                            previous_threshold = old_job.rem_size;
+                        }
+                        work_below += old_job.rem_size;
+                    }
+                    let custom_delta =
+                        self.custom_integral(INFINITY) - self.custom_integral(previous_threshold);
+                    delta += custom_delta * (work_below + job_size).powi(2) / 2.0
+                        - custom_delta * work_below.powi(2) / 2.0;
+                    delta
+                })
+            })
+            .unwrap();
+        let primary = *candidates
+            .iter()
+            .min_by_key(|i| {
+                n64({
+                    let mut queue = queues[**i].clone();
+                    queue.sort_by_key(|j| n64(j.rem_size));
+                    let mut delta = 0.0;
+                    let mut previous_threshold = job_size;
+                    let mut work_below = 0.0;
+                    let mut addends = 0.0;
+                    for old_job in queue {
+                        if old_job.rem_size <= job_size {
+                            delta += old_job.rem_size
+                                / (1.0 - self.lambda * self.size_dist.mean_given_below(job_size));
+                        } else {
+                            delta += job_size
+                                / (1.0
+                                    - self.lambda
+                                        * self.size_dist.mean_given_below(old_job.rem_size));
+                        }
+                        if old_job.rem_size >= job_size {
+                            assert!(old_job.rem_size >= previous_threshold);
+                            let custom_delta = self.custom_integral(old_job.rem_size)
+                                - self.custom_integral(previous_threshold);
+                            delta += custom_delta * work_below * job_size;
+                            addends += custom_delta * job_size.powi(2) / 2.0;
+                            previous_threshold = old_job.rem_size;
+                        }
+                        work_below += old_job.rem_size;
+                    }
+                    let custom_delta =
+                        self.custom_integral(INFINITY) - self.custom_integral(previous_threshold);
+                    delta += custom_delta * work_below * job_size;
+                    delta
+                })
+            })
+            .unwrap();
+        assert!(primary == alternative);
+        primary
+    }
+}
+
+impl fmt::Display for FPI {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "FPI")
+    }
+}
+
 fn simulate(
     end_time: f64,
     rho: f64,
@@ -514,7 +654,7 @@ fn simulate(
     */
     completions
 }
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 enum Size {
     Exp(f64),
     Pareto(f64),
@@ -636,7 +776,10 @@ impl Size {
             }
             &Size::Bimodal(low, high, low_prob) => unimplemented!(),
             &Size::Trimodal(low, med, high, low_prob, low_or_med_prob) => unimplemented!(),
-            &Size::BoundedPareto(_, _) => unimplemented!(),
+            &Size::BoundedPareto(alpha, bound) => {
+                assert!(x <= bound);
+                (alpha / (alpha - 1.0)) * (1.0 - x.powf(1.0 - alpha)) / (1.0 - bound.powf(-alpha))
+            }
         }
     }
     fn descending_busy_period(&self, x: f64, l: f64) -> f64 {
@@ -679,9 +822,9 @@ fn main() {
     //let g = Some(2.0);
 
     println!("time={}", time);
-    for seed in 0..1000 {
+    for seed in 0..1 {
         for size in vec![
-            Size::Bimodal(1.0, 1000.0, 0.9995),
+            //Size::Bimodal(1.0, 1000.0, 0.9995),
             Size::BoundedPareto(1.5, 10.0.powi(6)),
         ] {
             println!("{:?} {}", size, seed);
@@ -700,22 +843,28 @@ fn main() {
             let small_rhos = vec![
                 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
             ];
-            for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
+            for g in vec![None, Some(1.0) /*, Some(2.0), Some(4.0)*/] {
                 println!("g={:?}", g);
                 for rho in vec![0.8, 0.98] {
                     let mut results = vec![rho];
                     let mut policies: Vec<Box<Dispatch>> = vec![
-                        Box::new(LWL::new()),
-                        Box::new(Random::new(seed)),
+                        //Box::new(LWL::new()),
+                        Box::new(FPI::new(size, rho)),
                         Box::new(JSQ::new()),
-                        Box::new(RR::new(k)),
+                        Box::new(Random::new(seed)),
+                        //Box::new(RR::new(k)),
                         //Box::new(JIQ::new(seed)),
-                        Box::new(JSQ_d::new(seed, 2)),
+                        //Box::new(JSQ_d::new(seed, 2)),
+                        /*
                         if let Size::BoundedPareto(_, _) = size {
-                            Box::new(SITA::new(vec![1.2343,1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801, 98.224]))
+                            Box::new(SITA::new(vec![
+                                1.2343, 1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801,
+                                98.224,
+                            ]))
                         } else {
                             Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995))
                         },
+                        */
                     ];
                     if to_print {
                         println!(
