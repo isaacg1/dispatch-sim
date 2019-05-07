@@ -2,7 +2,7 @@
 # g = None, 1.0, 2.0, 4.0
 # rho = 0.8, 0.98
 # policy = LWL, Random, JSQ, RR, JSQ-2, SITA
-data = [[[[] for _ in range(7)] for _ in range(2)] for _ in range(4)]
+data = [[[[[] for _ in range(7)] for _ in range(2)] for _ in range(4)]]
 def add_data(filename):
     f = open(filename, "r")
     c = 0
@@ -14,10 +14,9 @@ def add_data(filename):
             s = (c//8) % 2
             values = [float(d) for d in line.split(',')[1:]]
             for i, value in enumerate(values):
-                data[g][rho][i].append(value)
+                data[0][g][rho][i].append(value)
             c += 1
-add_data("many.txt")
-add_data("many-2.txt")
+add_data("pareto-revised.txt")
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,7 +28,7 @@ bar_width = 0.16
 g_names = ["g=1", "g=2", "g=4","No guardrails"]
 g_colors = ["orange", "green", "purple", "0.5"]
 rho_names = ["80", "98"]
-plot_names = ["bp"]
+plot_names = ["bp2"]
 for i_s, s in enumerate(data):
     plot_name = plot_names[i_s]
     ordered_s = [s[1], s[2], s[3], s[0]]
