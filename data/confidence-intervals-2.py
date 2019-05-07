@@ -18,6 +18,8 @@ def add_data(filename):
             c += 1
 add_data("pareto-revised.txt")
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 names="LWL,Random,JSQ,RR,JSQ-2,SITA-E,FPI".split(",")
