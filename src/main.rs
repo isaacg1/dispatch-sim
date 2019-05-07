@@ -824,7 +824,7 @@ fn main() {
     println!("time={}", time);
     for seed in 0..10 {
         for size in vec![
-            //Size::Bimodal(1.0, 1000.0, 0.9995),
+            Size::Bimodal(1.0, 1000.0, 0.9995),
             Size::BoundedPareto(1.5, 10.0.powi(6)),
         ] {
             println!("{:?} {}", size, seed);
