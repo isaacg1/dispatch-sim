@@ -816,16 +816,18 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 1e4;
-    let k = 100;
+    let time = 1e6;
+    let k = 10;
     //let g = None;
     //let g = Some(2.0);
 
     println!("time={}", time);
-    for seed in 0..1 {
+    for seed in 0..10 {
         for size in vec![
-            Size::Bimodal(1.0, 1000.0, 0.9995),
-            Size::BoundedPareto(1.5, 10.0.powi(6)),
+            //Size::Bimodal(1.0, 1000.0, 0.9995),
+            Size::BoundedPareto(1.5, 1e6),
+            //Size::Hyper(1.0, 1000.0, 0.9995),
+            //Size::Exp(1.0),
         ] {
             println!("{:?} {}", size, seed);
             println!(
@@ -843,7 +845,7 @@ fn main() {
             let small_rhos = vec![
                 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
             ];
-            for g in vec![None, Some(1.0)] {
+            for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
                 println!("g={:?}", g);
                 for rho in vec![0.8, 0.98] {
                     let mut results = vec![rho];
