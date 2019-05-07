@@ -822,10 +822,10 @@ fn main() {
     //let g = Some(2.0);
 
     println!("time={}", time);
-    for seed in 0..10 {
+    for seed in 0..40 {
         for size in vec![
-            //Size::Bimodal(1.0, 1000.0, 0.9995),
-            Size::BoundedPareto(1.5, 1e6),
+            Size::Bimodal(1.0, 1000.0, 0.9995),
+            //Size::BoundedPareto(1.5, 1e6),
             //Size::Hyper(1.0, 1000.0, 0.9995),
             //Size::Exp(1.0),
         ] {
