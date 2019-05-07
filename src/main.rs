@@ -543,7 +543,7 @@ fn simulate(
             .for_each(|q| q.sort_by_key(|j| n64(j.rem_size)));
         let job_increment = queues.iter().fold(INFINITY, |a, q| {
             if let Some(job) = q.get(0) {
-                a.min(job.rem_size)
+                a.min(k as f64 * job.rem_size)
             } else {
                 a
             }
@@ -816,13 +816,13 @@ fn print_sim_mean(
     );
 }
 fn main() {
-    let time = 1e6;
-    let k = 10;
+    let time = 1e4;
+    let k = 100;
     //let g = None;
     //let g = Some(2.0);
 
     println!("time={}", time);
-    for seed in 0..10 {
+    for seed in 0..1 {
         for size in vec![
             Size::Bimodal(1.0, 1000.0, 0.9995),
             Size::BoundedPareto(1.5, 10.0.powi(6)),
@@ -845,7 +845,7 @@ fn main() {
             ];
             for g in vec![None, Some(1.0)] {
                 println!("g={:?}", g);
-                for rho in vec![0.5] {
+                for rho in vec![0.8, 0.98] {
                     let mut results = vec![rho];
                     let mut policies: Vec<Box<Dispatch>> = vec![
                         Box::new(LWL::new()),
@@ -854,16 +854,19 @@ fn main() {
                         Box::new(RR::new(k)),
                         Box::new(JSQ_d::new(seed, 2)),
                     ];
-                    if let Size::BoundedPareto(_, _) = size {
-                        policies.push(
-                            Box::new(SITA::new(vec![
+                    if k == 10 {
+                        if let Size::BoundedPareto(_, _) = size {
+                            policies.push(Box::new(SITA::new(vec![
                                 1.2343, 1.5617, 2.0391, 2.7741, 3.9920, 6.2313, 11.059, 24.801,
                                 98.224,
                             ])));
-                        policies.push(Box::new(FPI::new(size, rho)));
-                    }
-                    if let Size::Bimodal(_, _, _) = size {
+                        }
+                        if let Size::Bimodal(_, _, _) = size {
                             policies.push(Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995)));
+                        }
+                    }
+                    if let Size::BoundedPareto(_, _) = size {
+                        policies.push(Box::new(FPI::new(size, rho)));
                     }
                     if to_print {
                         println!(
