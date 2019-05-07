@@ -843,7 +843,7 @@ fn main() {
             let small_rhos = vec![
                 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
             ];
-            for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
+            for g in vec![None, Some(1.0)] {
                 println!("g={:?}", g);
                 for rho in vec![0.5] {
                     let mut results = vec![rho];
