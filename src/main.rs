@@ -822,11 +822,11 @@ fn main() {
     //let g = Some(2.0);
 
     println!("time={}", time);
-    for seed in 0..40 {
+    for seed in 0..10 {
         for size in vec![
-            Size::Bimodal(1.0, 1000.0, 0.9995),
+            //Size::Bimodal(1.0, 1000.0, 0.9995),
             //Size::BoundedPareto(1.5, 1e6),
-            //Size::Hyper(1.0, 1000.0, 0.9995),
+            Size::Hyper(1.0, 1000.0, 0.9995),
             //Size::Exp(1.0),
         ] {
             println!("{:?} {}", size, seed);
@@ -845,7 +845,7 @@ fn main() {
             let small_rhos = vec![
                 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
             ];
-            for g in vec![None, Some(1.0), Some(2.0), Some(4.0)] {
+            for g in vec![Some(1.0), None] {
                 println!("g={:?}", g);
                 for rho in vec![0.8, 0.98] {
                     let mut results = vec![rho];
@@ -865,6 +865,35 @@ fn main() {
                         }
                         if let Size::Bimodal(_, _, _) = size {
                             policies.push(Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995)));
+                        }
+                        if let Size::Exp(_) = size {
+                            policies.push(Box::new(SITA::new(
+                                        vec![
+                                        0.531812,
+                                        0.824388,
+                                        1.09735,
+                                        1.37642,
+                                        1.67835,
+                                        2.02231,
+                                        2.43922,
+                                        2.99431,
+                                        3.88972,
+                                        ]
+                                )));
+                        }
+                        if let Size::Hyper(_, _, _) = size {
+                            policies.push(Box::new(SITA::new(
+                                        vec![
+                                        0.68331,
+                                        1.0975,
+                                        1.5237,
+                                        2.0227,
+                                        2.6933,
+                                        3.892,
+                                        532.771,
+                                        1376.997,
+                                        2439.687,
+                                        ])));
                         }
                     }
                     if let Size::BoundedPareto(_, _) = size {

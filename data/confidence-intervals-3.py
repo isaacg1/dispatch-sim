@@ -17,6 +17,8 @@ def add_data(filename):
                 data[s][g][rho][i].append(values[i])
             c += 1
 add_data("other-dists.txt")
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 names="LWL,Random,JSQ,RR,JSQ-2".split(",")
