@@ -2,7 +2,7 @@
 # g = None, 1.0
 # rho = 0.8, 0.98
 # policy = LWL, Random, JSQ, RR, JSQ-2
-data = [[[[[] for _ in range(6)] for _ in range(2)] for _ in range(2)] for _ in range(2)]
+data = [[[[[] for _ in range(7)] for _ in range(2)] for _ in range(2)] for _ in range(2)]
 def add_data(filename):
     f = open(filename, "r")
     c = 0
@@ -14,15 +14,20 @@ def add_data(filename):
             s = (c//4) % 2
             values = [float(d) for d in line.split(',')[1:]]
             for i, value in enumerate(values):
-                data[s][g][rho][i].append(values[i])
+                if i == 5:
+                    i = 6
+                if len(values) == 1:
+                    i = 5
+                data[s][g][rho][i].append(value)
             c += 1
 add_data("servers-100.txt")
+add_data("server-100-sita.txt")
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-names="LWL,Random,JSQ,RR,JSQ-2,FPI".split(",")
-maybe_order = [0, 1, 3, 4, 2, 5]
+names="LWL,Random,JSQ,RR,JSQ-2,SITA,FPI".split(",")
+maybe_order = [5, 0, 1, 3, 4, 2, 6]
 maxes = [[350, 600], [700, 1200]]
 bar_width = 0.2
 g_names = ["g=1","No guardrails"]
