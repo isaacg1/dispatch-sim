@@ -24,7 +24,7 @@ import numpy as np
 names="LWL,Random,JSQ,RR,JSQ-2,SITA-E,FPI".split(",")
 maybe_order = [5, 0, 1, 3, 4, 2, 6]
 maxes = [[30], [50]]
-bar_width = 0.16
+bar_width = 0.2
 g_names = ["g=1","No guardrails"]
 g_colors = ["orange", "0.5"]
 rho_names = ["50"]
@@ -52,9 +52,10 @@ for i_s, s in enumerate(data):
                     width95.append(1.96*stderr)
                     #print(1.96*stderr/mean * 100, mean, 1.96*stderr, len(pol))
             ordered_means = [means[o] for o in order]
+            ordered_errs = [width95[o] for o in order]
             ticks = np.arange(len(order))
             ax = plt.bar(ticks + bar_width * i_g, ordered_means, bar_width,
-		yerr=stderr, ecolor='black',
+		yerr=ordered_errs, ecolor='black',
 		color = g_colors[i_g], label = g_names[i_g])
             rects = ax.patches
             for rect_index, rect in enumerate(rects):

@@ -1,9 +1,8 @@
-panic()
-# S = Hyper, Exp
+# S = Bimodal, Pareto
 # g = None, 1.0
 # rho = 0.8, 0.98
 # policy = LWL, Random, JSQ, RR, JSQ-2
-data = [[[[[] for _ in range(5)] for _ in range(2)] for _ in range(2)] for _ in range(2)]
+data = [[[[[] for _ in range(6)] for _ in range(2)] for _ in range(2)] for _ in range(1)]
 def add_data(filename):
     f = open(filename, "r")
     c = 0
@@ -12,28 +11,29 @@ def add_data(filename):
         if line[0] == '0':
             rho = c % 2
             g = (c//2) % 2
-            s = (c//4) % 2
+            s = 0
             values = [float(d) for d in line.split(',')[1:]]
             for i, value in enumerate(values):
                 data[s][g][rho][i].append(values[i])
             c += 1
-add_data("other-dists.txt")
+add_data("revised-exp.txt")
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-names="LWL,Random,JSQ,RR,JSQ-2".split(",")
-order = [0, 1, 3, 4, 2]
-ordered_names = [names[o] for o in order]
-maxes = [[55, 80], [30, 80]]
+names="LWL,Random,JSQ,RR,JSQ-2,SITA-E".split(",")
+maybe_order = [5, 0, 1, 3, 4, 2]
+maxes = [[30, 120]]
 bar_width = 0.2
-g_names = ["g=1","No guardrails"]
+g_names = ["g=1", "No guardrails"]
 g_colors = ["orange", "0.5"]
 rho_names = ["80", "98"]
-plot_names = ["hyper", "exp"]
+plot_names = ["exp-new"]
 for i_s, s in enumerate(data):
     plot_name = plot_names[i_s]
-    ordered_s = [s[1], s[0]]
+    ordered_s = [s[0], s[1]]
+    order = maybe_order
+    ordered_names = [names[o] for o in order]
     for i_rho in range(2):
         rho_name = rho_names[i_rho]
         plt.figure(figsize=(6, 4.5))
@@ -43,17 +43,19 @@ for i_s, s in enumerate(data):
             means = []
             width95 = []
             for pol in rho:
-                mean = sum(pol)/len(pol)
-                var = sum((p-mean)**2 for p in pol)/len(pol)
-                stddev = var**(0.5)
-                stderr = stddev / (len(pol))**0.5
-                means.append(mean)
-                width95.append(1.96*stderr)
-                #print(1.96*stderr/mean * 100, mean, 1.96*stderr, len(pol))
+                if pol:
+                    mean = sum(pol)/len(pol)
+                    var = sum((p-mean)**2 for p in pol)/len(pol)
+                    stddev = var**(0.5)
+                    stderr = stddev / (len(pol))**0.5
+                    means.append(mean)
+                    width95.append(1.96*stderr)
+                    #print(1.96*stderr/mean * 100, mean, 1.96*stderr, len(pol))
             ordered_means = [means[o] for o in order]
+            ordered_errs = [width95[o] for o in order]
             ticks = np.arange(len(order))
             ax = plt.bar(ticks + bar_width * i_g, ordered_means, bar_width,
-		yerr=stderr, ecolor='black',
+		yerr=ordered_errs, ecolor='black',
 		color = g_colors[i_g], label = g_names[i_g])
             rects = ax.patches
             for rect_index, rect in enumerate(rects):
