@@ -1,3 +1,4 @@
+panic()
 # S = Bimodal, Pareto
 # g = None, 1.0
 # rho = 0.8, 0.98

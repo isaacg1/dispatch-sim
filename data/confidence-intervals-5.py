@@ -26,7 +26,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-names="LWL,Random,JSQ,RR,JSQ-2,SITA,FPI".split(",")
+names="LWL,Random,JSQ,RR,JSQ-2,SITA-E,FPI".split(",")
 maybe_order = [5, 0, 1, 3, 4, 2, 6]
 maxes = [[450, 600], [900, 1200]]
 bar_width = 0.2
