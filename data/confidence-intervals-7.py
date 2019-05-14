@@ -19,6 +19,10 @@ def add_data(filename):
 add_data("revised-bimodal.txt")
 import matplotlib
 matplotlib.use('Agg')
+
+matplotlib.rcParams['ps.useafm'] = True
+matplotlib.rcParams['pdf.use14corefonts'] = True
+matplotlib.rcParams['text.usetex'] = True
 import matplotlib.pyplot as plt
 import numpy as np
 names="LWL,Random,JSQ,RR,JSQ-2,SITA-E".split(",")
