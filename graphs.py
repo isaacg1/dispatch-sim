@@ -1,9 +1,10 @@
-try:
-    import matplotlib.pyplot as plt
-except:
-    import matplotlib
-    matplotlib.use('agg')
-    import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
+
+matplotlib.rcParams['ps.useafm'] = True
+matplotlib.rcParams['pdf.use14corefonts'] = True
+matplotlib.rcParams['text.usetex'] = True
 
 """
 time=1e6
@@ -236,7 +237,7 @@ for (index, order_i) in enumerate(new_order):
             label=names[order_i])
     
 plt.legend(loc='lower left', bbox_to_anchor=(-0.01, 0), ncol=2)
-plt.ylabel("% change in E[T] from guardrails")
+plt.ylabel(r"\% change in E[T] from guardrails")
 plt.xlabel(r"System load ($\rho$)")
 plt.xticks(ticks + len(new_order)/2 * bar_width, new_rhos)
 
