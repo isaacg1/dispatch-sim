@@ -24,6 +24,8 @@ add_data("servers-100.txt")
 add_data("server-100-sita.txt")
 import matplotlib
 matplotlib.use('Agg')
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot as plt
 import numpy as np
 names="LWL,Random,JSQ,RR,JSQ-2,SITA-E,FPI".split(",")
