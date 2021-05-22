@@ -324,6 +324,41 @@ impl fmt::Display for SITA {
         write!(f, "SITA")
     }
 }
+struct SIRA {
+    thresholds: Vec<f64>,
+}
+
+impl SIRA {
+    fn new(thresholds: Vec<f64>) -> Self {
+        Self { thresholds }
+    }
+}
+impl Dispatch for SIRA {
+    fn dispatch(
+        &mut self,
+        job_size: f64,
+        queues: &Vec<Vec<Job>>,
+        candidates: &Vec<usize>,
+    ) -> usize {
+        let preferred_index = self
+            .thresholds
+            .iter()
+            .position(|&t| t > job_size)
+            .unwrap_or(queues.len());
+        let mut mut_candidates = candidates.clone();
+        mut_candidates.sort_by_key(|&c| n64(queues[c].iter().map(|job| job.rem_size).sum::<f64>()));
+        if preferred_index < candidates.len() {
+            mut_candidates[preferred_index]
+        } else {
+            mut_candidates[candidates.len() - 1]
+        }
+    }
+}
+impl fmt::Display for SIRA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SIRA")
+    }
+}
 
 struct Split {
     rng: IsaacRng,
@@ -538,9 +573,11 @@ fn simulate(
             .iter()
             .any(|q| q.iter().any(|j| j.arrival_time < end_time))
     {
+        /*
         queues
             .iter_mut()
             .for_each(|q| q.sort_by_key(|j| n64(j.rem_size)));
+            */
         let job_increment = queues.iter().fold(INFINITY, |a, q| {
             if let Some(job) = q.get(0) {
                 a.min(k as f64 * job.rem_size)
@@ -817,14 +854,14 @@ fn print_sim_mean(
 }
 fn main() {
     let time = 1e6;
-    let k = 100;
+    let k = 2;
     //let g = None;
     //let g = Some(2.0);
 
     println!("time={}", time);
-    for seed in 0..10 {
+    for seed in 0..1 {
         for size in vec![
-            Size::Bimodal(1.0, 1000.0, 0.9995),
+            //Size::Bimodal(1.0, 1000.0, 0.9995),
             Size::BoundedPareto(1.5, 1e6),
             //Size::Hyper(1.0, 1000.0, 0.9995),
             //Size::Exp(1.0),
@@ -840,25 +877,33 @@ fn main() {
             let mut to_print = true;
             let standard_rhos = vec![
                 0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.925, 0.95, 0.97,
-                0.98, 0.99, 0.995, 0.9975, 0.999,
+                0.98, 0.99, 0.995
             ];
             let small_rhos = vec![
                 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22, 0.24, 0.26,
             ];
-            for g in vec![None, Some(1.0)] {
+            for g in vec![None/*, Some(1.0)*/] {
                 println!("g={:?}", g);
-                for rho in vec![0.8, 0.98] {
+                for &rho in &standard_rhos {
                     let mut results = vec![rho];
-                    let mut policies: Vec<Box<Dispatch>> = vec![];
+                    let mut policies: Vec<Box<Dispatch>> = vec![
+                        Box::new(SITA::new(vec![3.9920])),
+                        Box::new(SIRA::new(vec![3.0])),
+                        Box::new(SIRA::new(vec![3.9920])),
+                        Box::new(SIRA::new(vec![5.0])),
+                        Box::new(SIRA::new(vec![6.0])),
+                        Box::new(LWL::new()),
+                        Box::new(JSQ::new()),
+                        Box::new(Random::new(seed)),
+                    ];
                     /*
+                    let mut policies: Vec<Box<Dispatch>> = vec![];
                     let mut policies: Vec<Box<Dispatch>> = vec![
                         Box::new(LWL::new()),
                         Box::new(Random::new(seed)),
                         Box::new(JSQ::new()),
                         Box::new(RR::new(k)),
-                        Box::new(JSQ_d::new(seed, 2)),
                     ];
-                    */
                     if k == 100 {
                         if let Size::BoundedPareto(_, _) = size {
                             policies.push(Box::new(SITA::new(vec![
@@ -965,7 +1010,6 @@ fn main() {
                             policies.push(Box::new(Split::new(seed, 10.0, 0.9995 / 1.4995)));
                         }
                     }
-                    /*
                     if k == 10 {
                         if let Size::BoundedPareto(_, _) = size {
                             policies.push(Box::new(SITA::new(vec![
@@ -989,9 +1033,12 @@ fn main() {
                             ])));
                         }
                     }
+                    /*
                     if let Size::BoundedPareto(_, _) = size {
                         policies.push(Box::new(FPI::new(size, rho)));
                     }
+                    */
+                    */
                     if to_print {
                         println!(
                             ",{}",
@@ -1003,7 +1050,6 @@ fn main() {
                         );
                         to_print = false;
                     }
-                    */
 
                     for (i, policy) in policies.iter_mut().enumerate() {
                         let completions = simulate(time, rho, &size, policy, k, g, seed);
@@ -1011,8 +1057,10 @@ fn main() {
                             / completions.len() as f64;
                         results.push(mean);
                     }
+                    let best_index = results.iter().skip(1).enumerate().min_by_key(|t| n64(*t.1)).unwrap().0;
                     println!(
-                        "{}",
+                        "{},{}",
+                        policies[best_index],
                         results
                             .iter()
                             .map(|p| format!("{:.6}", p))
