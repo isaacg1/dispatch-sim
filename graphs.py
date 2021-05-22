@@ -133,6 +133,20 @@ plt.savefig('guard-vs-unguard.eps', format='eps')
 
 plt.close()
 
+plt.plot(fcfs_random_rhos, fcfs_random, 'v-', label='Random/FCFS', linewidth=4, color='orange')
+plt.plot(fcfs_lwl_rhos, fcfs_lwl, 'd-', label='LWL/FCFS', linewidth=4, color='cyan')
+plt.plot(srpt_rhos, srpt_lwl, 's-', label='LWL/SRPT', linewidth=4, color='blue')
+plt.plot(srpt_rhos, srpt_random, '^-', label='Random/SRPT', linewidth=4, color='red')
+plt.plot(guard_rhos, guard_random, '^', label='G-Random/SRPT', linewidth=4, color='red', linestyle='dashed')
+plt.plot(guard_rhos, guard_lwl, 's', label='G-LWL/SRPT', linewidth=4, color='blue', linestyle='dashed')
+
+plt.ylim(ymax=200)
+
+plt.ylabel("Mean response time (E[T])")
+plt.xlabel(r"System load ($\rho$)")
+
+plt.savefig('all-together-guard.eps', format='eps')
+plt.savefig('all-together-guard.png', format='png')
 """
 BP:
 alpha=1.5
